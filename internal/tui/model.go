@@ -23,6 +23,7 @@ package tui
 
 import (
 	"context"
+	"net/url"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -389,14 +390,20 @@ func (m *Model) appURL(app *argocd.Application) string {
 	return u
 }
 
-// projectURL is the web UI address of an application's project, which is where
-// its sync windows are defined and edited.
-func (m *Model) projectURL(app *argocd.Application) string {
+// projectWindowsURL is the web UI address of an application's sync windows.
+//
+// The `?tab=windows` fragment is what Argo CD's own UI links to from an
+// application's SyncWindow badge (ui/src/app/applications/components/utils.tsx),
+// so this lands on the windows rather than on the project overview — which is
+// the difference between arriving at the thing you were reading and arriving
+// one click away from it.
+func (m *Model) projectWindowsURL(app *argocd.Application) string {
 	c, err := m.fleet.ClientFor(app)
 	if err != nil {
 		return ""
 	}
-	return c.Context().BaseURL() + "/settings/projects/" + app.Spec.Project
+	return c.Context().BaseURL() + "/settings/projects/" +
+		url.PathEscape(app.Spec.Project) + "?tab=windows"
 }
 
 // multiServer reports whether this session spans more than one Argo CD, which

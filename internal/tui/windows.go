@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -19,68 +20,66 @@ import (
 // edit them: a change here reaches every application in the project at once,
 // which is a decision that belongs in the repository that owns the project.
 
-// windowRow is one line of the view. The project's windows are shown alongside
-// the application's own, so a window that nearly matched is visible rather than
-// silently absent.
+// windowRow is one line of the view.
 type windowRow struct {
 	w argocd.SyncWindow
-	// applies is true when this window governs the focused application.
-	applies bool
-	// active is true when it is open right now.
+	// active is true when the window is open right now.
 	active bool
+	// detailed is true when the project's copy supplied the selectors. The
+	// per-application payload omits them, and the two calls are separate — a
+	// window edited between them is present in one and not the other, which is
+	// not hypothetical: these are edited by automation.
+	detailed bool
 }
 
-// windowRows assembles the view's content.
+// windowRows are the windows that govern the focused application.
+//
+// Only those: a project's other windows govern other applications, and listing
+// them here made the reader work out which lines were about the thing they were
+// looking at. The server decides membership — its selectors are glob patterns
+// over name, cluster, and namespace, and reimplementing that matching to filter
+// a fuller list would be a second, divergent answer to a question the server
+// already answers.
+//
+// The project's copies are still consulted, but only to recover the selectors:
+// the per-application payload drops them, so a window would otherwise render
+// with no indication of what it covers.
 func (m *Model) windowRows() []windowRow {
 	if m.windows == nil {
 		return nil
 	}
 
-	// The API returns the same window in more than one list, and the payloads
-	// differ — the per-application form drops the selectors. Key on the fields
-	// present in both so a window is not listed twice.
+	// The same window appears in both payloads with different fields, so it is
+	// keyed on what both carry.
 	key := func(w argocd.SyncWindow) string {
 		return w.Kind + "|" + w.Schedule + "|" + w.Duration
 	}
-	applies := make(map[string]bool, len(m.windows.AssignedWindows))
-	for _, w := range m.windows.AssignedWindows {
-		applies[key(w)] = true
+
+	detailed := make(map[string]argocd.SyncWindow, len(m.projectWindows))
+	for _, w := range m.projectWindows {
+		detailed[key(w)] = w
 	}
 	active := make(map[string]bool, len(m.windows.ActiveWindows))
 	for _, w := range m.windows.ActiveWindows {
 		active[key(w)] = true
 	}
 
-	// The project's list carries the selectors, so it is preferred as the
-	// source; anything assigned but missing from it is appended, which happens
-	// when the session cannot read the project.
-	var rows []windowRow
-	seen := map[string]bool{}
-	for _, w := range m.projectWindows {
-		k := key(w)
-		seen[k] = true
-		rows = append(rows, windowRow{w: w, applies: applies[k], active: active[k]})
-	}
+	rows := make([]windowRow, 0, len(m.windows.AssignedWindows))
 	for _, w := range m.windows.AssignedWindows {
-		if k := key(w); !seen[k] {
-			rows = append(rows, windowRow{w: w, applies: true, active: active[k]})
+		k := key(w)
+		full, matched := detailed[k]
+		if matched {
+			w = full
 		}
+		rows = append(rows, windowRow{w: w, active: active[k], detailed: matched})
 	}
 
-	// Windows that govern this application lead: the reader came here to find
-	// out about their own application, and the rest is context.
-	stable := make([]windowRow, 0, len(rows))
-	for _, r := range rows {
-		if r.applies {
-			stable = append(stable, r)
-		}
-	}
-	for _, r := range rows {
-		if !r.applies {
-			stable = append(stable, r)
-		}
-	}
-	return stable
+	// Open windows lead: what is in effect right now is what the reader came
+	// for, and a schedule that will not matter for hours is context.
+	sort.SliceStable(rows, func(i, j int) bool {
+		return rows[i].active && !rows[j].active
+	})
+	return rows
 }
 
 // renderWindows draws the sync-window view.
@@ -91,16 +90,20 @@ func (m *Model) renderWindows() string {
 	if len(rows) == 0 {
 		txt := "loading sync windows…"
 		if !m.loading {
-			// No windows at all is the common case and a meaningful answer, not
-			// an empty screen.
-			txt = "no sync windows on this project — syncing is never blocked by a schedule"
+			// No window governing this application is the common case and a
+			// meaningful answer, not an empty screen. The distinction matters:
+			// the project may well have windows, just none that match this app.
+			txt = "no sync window applies to this application — its syncing is never blocked by a schedule"
+			if n := len(m.projectWindows); n > 0 {
+				txt += fmt.Sprintf(" (the project has %d, none matching)", n)
+			}
 		}
 		return m.emptyBody(h, txt)
 	}
 
 	lines := make([]string, 0, h)
 	lines = append(lines, m.st.header.Render(truncate(
-		"   KIND   SCHEDULE          DURATION  ZONE            APPLIES TO", m.width)))
+		"   KIND   SCHEDULE          DURATION  ZONE            MATCHED BY", m.width)))
 
 	for r := m.windowTop; r < len(rows) && len(lines) < h; r++ {
 		row := rows[r]
@@ -123,32 +126,47 @@ func (m *Model) renderWindows() string {
 			state = m.st.warn.Render(m.gl.progressing) + " "
 		}
 
-		nameStyle := lipgloss.NewStyle()
-		if !row.applies {
-			// A window that does not govern this application is context, not
-			// news; dimming it keeps the applicable ones legible.
-			nameStyle = m.st.dim
-		}
+		schedStyle := lipgloss.NewStyle()
 		if r == m.windowCur {
-			nameStyle = m.st.selected
-		}
-
-		scope := windowScope(row.w)
-		if !row.applies {
-			scope += m.st.dim.Render("  (does not apply)")
+			schedStyle = m.st.selected
 		}
 
 		line := cursor + state + kind + " " +
-			nameStyle.Render(padRight(row.w.Schedule, 17)) + " " +
+			schedStyle.Render(padRight(row.w.Schedule, 17)) + " " +
 			m.st.dim.Render(padRight(row.w.Duration, 9)) + " " +
-			m.st.dim.Render(padRight(truncate(row.w.Zone(), 15), 15)) + " " +
-			scope
+			m.st.dim.Render(padRight(truncate(m.windowZoneCell(row), 15), 15)) + " " +
+			m.st.dim.Render(m.windowScopeCell(row))
 		lines = append(lines, truncate(line, m.width))
 	}
 	return padBody(lines, h)
 }
 
-// windowScope renders what a window applies to.
+// windowZoneCell renders the time zone, or marks it unknown.
+//
+// The per-application payload omits the zone, so defaulting to UTC there would
+// report a schedule in the wrong zone — an Asia/Seoul window read as UTC is off
+// by nine hours, which is the difference between "open now" and "opens
+// tonight".
+func (m *Model) windowZoneCell(row windowRow) string {
+	if !row.detailed {
+		return "?"
+	}
+	return row.w.Zone()
+}
+
+// windowScopeCell renders what a window covers, or says the detail is missing.
+//
+// Silence is not an option here: an empty selector set legitimately means "the
+// whole project", so rendering the same thing for "we could not find this
+// window's definition" would state the opposite of the truth.
+func (m *Model) windowScopeCell(row windowRow) string {
+	if !row.detailed {
+		return m.st.warn.Render("(selectors unavailable — the project's list changed)")
+	}
+	return windowScope(row.w)
+}
+
+// windowScope renders the selectors that matched this application.
 //
 // An empty selector set means the whole project, which is worth saying outright
 // — a blank cell reads as missing data rather than as "everything".
@@ -225,10 +243,10 @@ func (m *Model) handleWindowsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.loadWindowsCmd(*m.app)
 		}
 	case "o":
-		// Windows are edited in the Argo CD UI, on the project — which is where
-		// `o` goes from here, rather than to the application's own page.
+		// Straight to the project's windows tab, which is where they are
+		// defined and edited — not to the project overview.
 		if m.app != nil {
-			return m, m.openBrowserCmd([]string{m.projectURL(m.app)})
+			return m, m.openBrowserCmd([]string{m.projectWindowsURL(m.app)})
 		}
 	case "O":
 		// The application's own page, for the reader who came here to check a

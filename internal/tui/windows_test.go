@@ -25,10 +25,10 @@ func windowModel(t *testing.T, w *argocd.AppSyncWindows, project []argocd.SyncWi
 	return m
 }
 
-// The same window arrives in more than one list, and the per-application form
-// drops the selectors — so it must be matched on the fields both carry, or a
-// window is listed twice.
-func TestWindowRowsDeduplicate(t *testing.T) {
+// The per-application payload drops the selectors, so they are recovered from
+// the project's copy — otherwise a window renders with no indication of what it
+// covers.
+func TestSelectorsAreRecoveredFromTheProject(t *testing.T) {
 	assigned := argocd.SyncWindow{Kind: "allow", Schedule: "1 15 * * *", Duration: "5h"}
 	full := win("allow", "1 15 * * *", "5h", "web-prod*")
 
@@ -42,20 +42,23 @@ func TestWindowRowsDeduplicate(t *testing.T) {
 	)
 
 	rows := m.windowRows()
-	if len(rows) != 2 {
-		t.Fatalf("rows = %d, want 2 — the assigned window appears in both lists", len(rows))
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want just the assigned window", len(rows))
 	}
-	// The project's copy is preferred, because it is the one with selectors.
 	if len(rows[0].w.Applications) == 0 {
-		t.Error("the deduplicated row lost its selectors")
+		t.Error("the row lost its selectors — they only exist on the project's copy")
+	}
+	if !rows[0].active {
+		t.Error("the window is open and should say so")
 	}
 }
 
-// A window that governs this application leads: the reader came here about
-// their own application, and the rest is context.
-func TestApplicableWindowsSortFirst(t *testing.T) {
+// Only the windows that govern this application are listed. A project's other
+// windows govern other applications, and listing them made the reader work out
+// which lines were about the thing they were looking at.
+func TestOnlyApplicableWindowsAreListed(t *testing.T) {
 	mine := win("allow", "1 15 * * *", "5h", "web-prod*")
-	other := win("deny", "0 3 * * *", "24h", "other*")
+	other := win("deny", "0 3 * * *", "24h", "someone-else*")
 
 	m := windowModel(t,
 		&argocd.AppSyncWindows{
@@ -66,18 +69,47 @@ func TestApplicableWindowsSortFirst(t *testing.T) {
 	)
 
 	rows := m.windowRows()
-	if len(rows) != 2 {
-		t.Fatalf("rows = %d, want 2", len(rows))
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want only the window that applies", len(rows))
 	}
-	if !rows[0].applies || rows[1].applies {
-		t.Errorf("ordering = applies:%v,%v — the applicable window must lead",
-			rows[0].applies, rows[1].applies)
+	if rows[0].w.Schedule != mine.Schedule {
+		t.Errorf("listed %q, want the applicable window", rows[0].w.Schedule)
+	}
+
+	m.screen = screenWindows
+	out := m.View()
+	if strings.Contains(out, "someone-else*") {
+		t.Errorf("a window governing other applications was listed:\n%s", out)
 	}
 }
 
-// The project's other windows are shown, not hidden: a window whose selector
-// nearly matched is the usual answer to "why is this not blocked/allowed".
-func TestNonApplicableWindowsAreShownAndLabelled(t *testing.T) {
+// Open windows lead: what is in effect right now is what the reader came for.
+func TestOpenWindowsSortFirst(t *testing.T) {
+	closed := win("allow", "0 3 * * *", "1h", "web-prod*")
+	openNow := win("deny", "1 15 * * *", "5h", "web-prod*")
+
+	m := windowModel(t,
+		&argocd.AppSyncWindows{
+			AssignedWindows: []argocd.SyncWindow{closed, openNow},
+			ActiveWindows:   []argocd.SyncWindow{openNow},
+			CanSync:         false,
+		},
+		[]argocd.SyncWindow{closed, openNow},
+	)
+
+	rows := m.windowRows()
+	if len(rows) != 2 {
+		t.Fatalf("rows = %d, want 2", len(rows))
+	}
+	if !rows[0].active || rows[1].active {
+		t.Errorf("ordering = active:%v,%v — the open window must lead",
+			rows[0].active, rows[1].active)
+	}
+}
+
+// A project with windows, none of which match, is a different answer from a
+// project with no windows at all — and the reader needs to tell them apart.
+func TestNoMatchingWindowSaysTheProjectHasSome(t *testing.T) {
 	m := windowModel(t,
 		&argocd.AppSyncWindows{CanSync: true},
 		[]argocd.SyncWindow{win("deny", "0 3 * * *", "24h", "someone-else*")},
@@ -85,11 +117,11 @@ func TestNonApplicableWindowsAreShownAndLabelled(t *testing.T) {
 	m.screen = screenWindows
 
 	out := m.View()
-	if !strings.Contains(out, "someone-else*") {
-		t.Errorf("a project window must still be listed:\n%s", out)
+	if !strings.Contains(out, "no sync window applies") {
+		t.Errorf("the view should say no window applies:\n%s", out)
 	}
-	if !strings.Contains(out, "does not apply") {
-		t.Errorf("a window that does not govern this app must say so:\n%s", out)
+	if !strings.Contains(out, "the project has 1") {
+		t.Errorf("it should say the project has windows that did not match:\n%s", out)
 	}
 }
 
@@ -202,9 +234,10 @@ func TestWindowViewIsReachableAndReturns(t *testing.T) {
 // argx shows windows and does not edit them: a change here reaches every
 // application in the project at once.
 func TestWindowViewHasNoMutatingKeys(t *testing.T) {
+	w := win("deny", "0 3 * * *", "24h")
 	m := windowModel(t,
-		&argocd.AppSyncWindows{CanSync: true},
-		[]argocd.SyncWindow{win("deny", "0 3 * * *", "24h")},
+		&argocd.AppSyncWindows{AssignedWindows: []argocd.SyncWindow{w}, CanSync: true},
+		[]argocd.SyncWindow{w},
 	)
 	m.screen = screenWindows
 
@@ -223,13 +256,22 @@ func TestWindowViewHasNoMutatingKeys(t *testing.T) {
 
 // A stale response must not overwrite the view the user navigated to.
 func TestStaleWindowResponseIsDropped(t *testing.T) {
+	current := win("allow", "current", "1h", "web-prod*")
 	m := windowModel(t,
-		&argocd.AppSyncWindows{CanSync: true},
-		[]argocd.SyncWindow{win("allow", "current", "1h")},
+		&argocd.AppSyncWindows{
+			AssignedWindows: []argocd.SyncWindow{current},
+			CanSync:         true,
+		},
+		[]argocd.SyncWindow{current},
 	)
-	m.reqID = 99
+	m.windowID = 99
 
-	m.Update(windowsMsg{id: 4, project: []argocd.SyncWindow{win("deny", "stale", "1h")}})
+	stale := win("deny", "stale", "1h", "web-prod*")
+	m.Update(windowsMsg{
+		id:      4,
+		windows: &argocd.AppSyncWindows{AssignedWindows: []argocd.SyncWindow{stale}},
+		project: []argocd.SyncWindow{stale},
+	})
 
 	rows := m.windowRows()
 	if len(rows) != 1 || rows[0].w.Schedule != "current" {
@@ -246,13 +288,14 @@ func TestWindowViewFitsTheTerminal(t *testing.T) {
 			t.Setenv("ARGX_ICONS", env)
 			t.Setenv("NO_COLOR", "1")
 
+			ws := []argocd.SyncWindow{
+				win("deny", "3 0 * * *", "24h", "a-very-long-application-pattern-prod*", "*a-very-long-application-pattern-prod*"),
+				win("allow", "30 13 * * *", "6h30m", "another-long-one*"),
+				{Kind: "deny", Schedule: "0 0 * * 0", Duration: "48h"},
+			}
 			m := windowModel(t,
-				&argocd.AppSyncWindows{CanSync: false},
-				[]argocd.SyncWindow{
-					win("deny", "3 0 * * *", "24h", "a-very-long-application-pattern-prod*", "*a-very-long-application-pattern-prod*"),
-					win("allow", "30 13 * * *", "6h30m", "another-long-one*"),
-					{Kind: "deny", Schedule: "0 0 * * 0", Duration: "48h"},
-				},
+				&argocd.AppSyncWindows{AssignedWindows: ws, CanSync: false},
+				ws,
 			)
 			m.gl = newGlyphs()
 			m.st = newStyles()
@@ -324,11 +367,12 @@ func TestEachSequenceRejectsItsOwnStaleResponses(t *testing.T) {
 // it: the screen was unreachable from the key dispatch once, so j and k did
 // nothing at all.
 func TestWindowViewNavigates(t *testing.T) {
+	three := []argocd.SyncWindow{
+		win("allow", "a", "1h"), win("deny", "b", "2h"), win("allow", "c", "3h"),
+	}
 	m := windowModel(t,
-		&argocd.AppSyncWindows{CanSync: true},
-		[]argocd.SyncWindow{
-			win("allow", "a", "1h"), win("deny", "b", "2h"), win("allow", "c", "3h"),
-		},
+		&argocd.AppSyncWindows{AssignedWindows: three, CanSync: true},
+		three,
 	)
 	m.screen = screenWindows
 
@@ -369,12 +413,18 @@ func TestWindowViewOpensTheProject(t *testing.T) {
 	m := windowModel(t, &argocd.AppSyncWindows{CanSync: true}, nil)
 	m.screen = screenWindows
 
-	url := m.projectURL(m.app)
+	// Argo CD's own UI links to the windows tab from an application's
+	// SyncWindow badge; landing on the project overview instead leaves the
+	// reader one click from what they were looking at.
+	url := m.projectWindowsURL(m.app)
 	if !strings.Contains(url, "/settings/projects/") {
-		t.Errorf("projectURL = %q, want the project settings page", url)
+		t.Errorf("url = %q, want the project settings page", url)
 	}
 	if !strings.Contains(url, m.app.Spec.Project) {
-		t.Errorf("projectURL = %q, want it to name the project", url)
+		t.Errorf("url = %q, want it to name the project", url)
+	}
+	if !strings.Contains(url, "tab=windows") {
+		t.Errorf("url = %q, want it to land on the windows tab", url)
 	}
 
 	if cmd := press(t, m, "o"); cmd == nil {
@@ -385,5 +435,98 @@ func TestWindowViewOpensTheProject(t *testing.T) {
 	}
 	if m.screen != screenWindows {
 		t.Errorf("opening a browser left the view for %v", m.screen)
+	}
+}
+
+// The two payloads come from separate calls, and these windows are edited by
+// automation — a window present in one and not the other is not hypothetical.
+// When the project's copy is missing, its selectors and zone are unknown, and
+// saying so beats stating a default that would be wrong.
+func TestMissingProjectCopyIsMarkedNotGuessed(t *testing.T) {
+	// The per-application payload drops the selectors and the zone.
+	assigned := argocd.SyncWindow{Kind: "allow", Schedule: "1 15 * * *", Duration: "5h"}
+
+	m := windowModel(t,
+		&argocd.AppSyncWindows{
+			AssignedWindows: []argocd.SyncWindow{assigned},
+			CanSync:         true,
+		},
+		// The project's list no longer contains it.
+		[]argocd.SyncWindow{win("deny", "0 3 * * *", "24h", "something-else*")},
+	)
+	m.screen = screenWindows
+
+	rows := m.windowRows()
+	if len(rows) != 1 {
+		t.Fatalf("rows = %d, want the assigned window", len(rows))
+	}
+	if rows[0].detailed {
+		t.Error("the row claims it has the project's detail when it does not")
+	}
+
+	out := m.View()
+	// "the whole project" is what an empty selector set legitimately means, so
+	// rendering it here would state the opposite of the truth.
+	if strings.Contains(out, "the whole project") {
+		t.Errorf("a window with unknown selectors was rendered as covering everything:\n%s", out)
+	}
+	if !strings.Contains(out, "unavailable") {
+		t.Errorf("the missing detail should be marked:\n%s", out)
+	}
+	// An Asia/Seoul window read as UTC is off by nine hours — the difference
+	// between "open now" and "opens tonight".
+	if strings.Contains(out, "UTC") {
+		t.Errorf("an unknown zone was rendered as UTC:\n%s", out)
+	}
+}
+
+// When the project's copy is present, the selectors and zone come from it.
+func TestPresentProjectCopySuppliesTheDetail(t *testing.T) {
+	assigned := argocd.SyncWindow{Kind: "allow", Schedule: "1 15 * * *", Duration: "5h"}
+	full := win("allow", "1 15 * * *", "5h", "web-prod*")
+
+	m := windowModel(t,
+		&argocd.AppSyncWindows{
+			AssignedWindows: []argocd.SyncWindow{assigned},
+			CanSync:         true,
+		},
+		[]argocd.SyncWindow{full},
+	)
+	m.screen = screenWindows
+
+	if !m.windowRows()[0].detailed {
+		t.Fatal("the project's copy should have supplied the detail")
+	}
+	out := m.View()
+	if !strings.Contains(out, "web-prod*") {
+		t.Errorf("the selectors are missing:\n%s", out)
+	}
+	if !strings.Contains(out, "Asia/Seoul") {
+		t.Errorf("the zone is missing:\n%s", out)
+	}
+}
+
+// The placeholder shown when nothing applies explains why, and an explanation
+// cut off at the terminal edge explains nothing.
+func TestEmptyPlaceholderWraps(t *testing.T) {
+	for _, w := range []int{140, 120, 100, 80, 60} {
+		m := windowModel(t,
+			&argocd.AppSyncWindows{CanSync: true},
+			[]argocd.SyncWindow{win("deny", "0 3 * * *", "24h", "other*")},
+		)
+		m.screen = screenWindows
+		m.Update(tea.WindowSizeMsg{Width: w, Height: 16})
+
+		out := m.View()
+		for i, line := range strings.Split(out, "\n") {
+			if got := lipglossWidth(line); got > w {
+				t.Errorf("w=%d line %d is %d cells:\n%q", w, i, got, line)
+			}
+		}
+		// The whole sentence must survive, wrapped rather than truncated.
+		flat := strings.Join(strings.Fields(stripANSI(out)), " ")
+		if !strings.Contains(flat, "the project has 1, none matching") {
+			t.Errorf("w=%d: the explanation was cut off:\n%s", w, out)
+		}
 	}
 }

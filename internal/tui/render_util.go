@@ -12,10 +12,21 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
+// emptyBody is the placeholder shown when a view has nothing to list.
+//
+// The text is wrapped rather than truncated: these messages explain why the
+// view is empty, and a sentence cut off at the terminal edge explains nothing.
+// They are the one place in the render path where content is worth more than
+// one line.
 func (m *Model) emptyBody(h int, text string) string {
 	lines := make([]string, 0, h)
 	lines = append(lines, "")
-	lines = append(lines, "  "+m.st.dim.Render(text))
+	for _, l := range strings.Split(wrapText(text, m.width-4), "\n") {
+		if len(lines) >= h {
+			break
+		}
+		lines = append(lines, "  "+m.st.dim.Render(truncate(l, m.width-2)))
+	}
 	return padBody(lines, h)
 }
 

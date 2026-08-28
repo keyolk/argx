@@ -118,14 +118,22 @@ func (m *Model) renderStatus() string {
 		}
 	case screenWindows:
 		rows := m.windowRows()
-		applies := 0
+		open := 0
 		for _, r := range rows {
-			if r.applies {
-				applies++
+			if r.active {
+				open++
 			}
 		}
-		parts = append(parts, m.st.dim.Render(
-			fmt.Sprintf("%d windows · %d apply here", len(rows), applies)))
+		// The project's total is carried alongside, because "2 windows" reads
+		// very differently when the project has two than when it has thirty.
+		summary := fmt.Sprintf("%d window(s) apply", len(rows))
+		if n := len(m.projectWindows); n > len(rows) {
+			summary += fmt.Sprintf(" of %d on the project", n)
+		}
+		if open > 0 {
+			summary += fmt.Sprintf(" · %d open", open)
+		}
+		parts = append(parts, m.st.dim.Render(summary))
 		if m.windows != nil {
 			if m.windows.CanSync {
 				parts = append(parts, m.st.success.Render("syncing allowed now"))

@@ -272,12 +272,22 @@ syncing — the maintenance windows defined on its AppProject.
    deny   3 0 * * *         24h       Asia/Seoul      other-prod*  (does not apply)
 ```
 
-Windows that govern the focused application lead; the rest of the project's are
-shown below, dimmed and labelled — a window whose selector *nearly* matched is
-the usual answer to "why is this not blocked". An open window is marked, and the
-verdict on whether a sync can run right now comes from the server rather than
-being recomputed, because the precedence between allow and deny windows is the
+Only the windows that govern this application are listed — the project's others
+govern other applications, and mixing them in makes the reader work out which
+lines are about the thing they are looking at. Open windows lead. The verdict on
+whether a sync can run right now comes from the server rather than being
+recomputed, because the precedence between allow and deny windows is the
 server's to define.
+
+`o` opens the project's **windows tab**, which is where they are defined and
+edited; `O` opens the application itself.
+
+The selectors and time zone come from a second call, for the project's list —
+the per-application payload omits them. These windows are edited by automation,
+so a window can be present in one response and absent from the other; when that
+happens argx marks the detail unknown rather than showing the default. An empty
+selector set legitimately means "the whole project", and an unknown zone read as
+UTC would put an Asia/Seoul schedule nine hours off.
 
 A blocked sync is flagged in the status line on **every** tab, and summarized in
 DETAILS beside the sync policy — pressing `s` and being rejected is a worse way
