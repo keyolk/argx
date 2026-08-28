@@ -234,7 +234,7 @@ func (m *Model) renderFooter() string {
 		case tabDetails:
 			hints = []string{"enter edit", "[ ] tabs", "s sync", "w windows", "e events", "o browser", "esc back"}
 		default:
-			hints = []string{"space mark", "[ ] tabs", "enter manifest", "d diff", "l logs", "s sync", "w windows", "esc back"}
+			hints = []string{"space mark", "enter manifest", "d diff", "l logs", "e shell", "s sync", "w windows", "esc back"}
 		}
 	case screenAppSets:
 		hints = []string{"enter apps", "y spec", "o browser", "S applications", "/ filter", "r reload", "? help"}
@@ -277,6 +277,9 @@ func (m *Model) renderOverlay(frame string) string {
 		lines = append(lines, "", m.st.dim.Render("y confirm   ·   n / esc cancel"))
 		box = m.st.modal.Render(strings.Join(
 			clampModalBody(lines, w, m.modalContentHeight()), "\n"))
+
+	case overlayContainer:
+		box = m.renderContainerPicker()
 
 	case overlayRevPicker:
 		box = m.renderRevPicker()

@@ -174,7 +174,7 @@ func (m *Model) loadManifestCmd(app argocd.Application, n argocd.Node) tea.Cmd {
 	}
 }
 
-func (m *Model) loadLogsCmd(app argocd.Application, n argocd.Node) tea.Cmd {
+func (m *Model) loadLogsCmd(app argocd.Application, n argocd.Node, container string) tea.Cmd {
 	m.reqID++
 	id := m.reqID
 	m.loading, m.loadWhat = true, "logs"
@@ -186,12 +186,16 @@ func (m *Model) loadLogsCmd(app argocd.Application, n argocd.Node) tea.Cmd {
 	ref := n.ResourceRef
 	ref.AppNamespace = app.AppNamespace()
 	title := fmt.Sprintf("logs · %s (last %d lines)", n.Name, logTailLines)
+	if container != "" {
+		title = fmt.Sprintf("logs · %s · %s (last %d lines)", n.Name, container, logTailLines)
+	}
 	return func() tea.Msg {
 		c, cancel := context.WithTimeout(ctx, 60*time.Second)
 		defer cancel()
-		// Container is left empty so the server picks the pod's default; a
-		// container picker is a later refinement, not a reason to block logs.
-		out, err := client.PodLogs(c, app.Name(), ref, "", logTailLines)
+		// An empty container name lets the server pick the pod's default, which
+		// is right for a single-container pod; the caller resolves the choice
+		// for the rest.
+		out, err := client.PodLogs(c, app.Name(), ref, container, logTailLines)
 		if err != nil && out == "" {
 			return pagerMsg{id: id, err: err}
 		}

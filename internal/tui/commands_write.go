@@ -199,3 +199,59 @@ func (m *Model) loadWindowsCmd(app argocd.Application) tea.Cmd {
 		return windowsMsg{id: id, windows: w, project: pw}
 	}
 }
+
+// containersMsg carries a pod's containers.
+type containersMsg struct {
+	containers []argocd.Container
+	err        error
+}
+
+// loadContainersCmd fetches a pod's containers.
+func (m *Model) loadContainersCmd(app argocd.Application, n argocd.Node) tea.Cmd {
+	client, err := m.client(&app)
+	if err != nil {
+		return func() tea.Msg { return containersMsg{err: err} }
+	}
+	ctx := m.ctx
+	ref := n.ResourceRef
+	ref.AppNamespace = app.AppNamespace()
+
+	return func() tea.Msg {
+		c, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		cs, err := client.PodContainers(c, app.Name(), ref)
+		if err != nil {
+			return containersMsg{err: err}
+		}
+		return containersMsg{containers: cs}
+	}
+}
+
+// execMsg reports how an exec session ended.
+type execMsg struct{ err error }
+
+// execCmd suspends the TUI and runs a shell in the container.
+//
+// tea.ExecProcess is what hands the terminal over: Bubble Tea leaves the
+// alternate screen and raw mode, the shell gets a real terminal, and the TUI is
+// restored when it exits. Trying to render a shell inside the TUI instead would
+// mean reimplementing a terminal emulator.
+func (m *Model) execCmd(app argocd.Application, pod argocd.Node, container string) tea.Cmd {
+	client, err := m.client(&app)
+	if err != nil {
+		return func() tea.Msg { return execMsg{err: err} }
+	}
+	req := argocd.ExecRequest{
+		App:          app.Name(),
+		AppNamespace: app.AppNamespace(),
+		Project:      app.Spec.Project,
+		Namespace:    pod.Namespace,
+		Pod:          pod.Name,
+		Container:    container,
+		Rows:         uint16(m.height),
+		Cols:         uint16(m.width),
+	}
+	return tea.Exec(newExecRunner(m.ctx, client, req), func(err error) tea.Msg {
+		return execMsg{err: err}
+	})
+}

@@ -179,6 +179,8 @@ func (m *Model) helpLines() []string {
 			{"enter", "live manifest"},
 			{"d", "diff of the marked resources"},
 			{"l / L", "pod logs"},
+			{"e", "a shell in the container, through Argo CD"},
+			{"", "a multi-container pod asks which one first"},
 			{"s", "sync the marked resources"},
 			{"/", "filter — see below"},
 		}},

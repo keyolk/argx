@@ -179,6 +179,7 @@ and bottom, `/` filter, `?` help, `Esc` back, `q` quit at the list.
 | `d` | diff (desired vs live) | diff of the marked resources | diff against live | — |
 | `e` | events | — | — | events |
 | `l` `L` | — | pod logs | — | — |
+| `e` | — | a shell in the container | — | — |
 | `r` `R` | refresh / hard refresh | reload | ← | ← |
 | `s` | sync | sync the marked resources | — | sync |
 | `b` | — | — | roll back | — |
@@ -260,6 +261,24 @@ guaranteed: the controller's tracking label is absent when the template sets its
 own labels, and `status.applicationStatus` is populated only under a
 progressive-sync strategy. When neither is available argx says so rather than
 showing an unfiltered list that would read as "it generated everything".
+
+## Logs and shells
+
+`l` reads a pod's logs, `e` opens a shell in it. A pod with more than one
+container asks which — reading the wrong container's logs is a silent wrong
+answer, not an error — and a pod with one does not, because that is not a
+choice. The list shows each container's image beside its name, since two
+containers called `app` and `sidecar` say little and their images say what they
+are.
+
+Init containers are listed for logs, which is what you want when a pod is stuck
+in Init, but exec into a finished one is declined with the reason rather than
+attempted.
+
+The shell goes **through Argo CD**, not through kubectl: the session inherits
+Argo CD's RBAC and lands in its audit log, and argx has no way to map a
+destination cluster onto a kubeconfig context anyway. argx suspends while the
+shell has the terminal, and reloads the resource tree when it exits.
 
 ## Sync windows
 

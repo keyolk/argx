@@ -289,6 +289,9 @@ func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case overlayRevPicker:
 		return m.handleRevPickerKey(msg)
 
+	case overlayContainer:
+		return m.handleContainerKey(msg)
+
 	case overlaySyncOpts:
 		switch msg.String() {
 		case "p":

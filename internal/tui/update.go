@@ -127,6 +127,38 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.windowCur, m.windowTop = 0, 0
 		return m, nil
 
+	case containersMsg:
+		p := &m.picker
+		p.loading = false
+		if msg.err != nil {
+			p.err = msg.err.Error()
+			return m, nil
+		}
+		p.containers = msg.containers
+		switch len(p.containers) {
+		case 0:
+			p.err = "this pod reports no containers"
+		case 1:
+			// One container is not a choice, so it is not offered as one: the
+			// modal closes and the action runs. This is why the containers are
+			// fetched before the modal decides whether to stay open.
+			p.cur = 0
+			return m.chooseContainer()
+		}
+		return m, nil
+
+	case execMsg:
+		if msg.err != nil {
+			m.showError(msg.err)
+			return m, nil
+		}
+		// The tree may have changed while the shell was open — a restart, a new
+		// pod — so it is reloaded rather than left as it was.
+		if m.app != nil {
+			return m, m.loadTreeCmd(*m.app)
+		}
+		return m, nil
+
 	case toastMsg:
 		m.setToast(msg.text)
 		return m, nil

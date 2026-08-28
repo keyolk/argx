@@ -89,6 +89,9 @@ const (
 	// overlayRevPicker chooses a target revision from the repository's actual
 	// branches and tags, so a revision is picked rather than typed from memory.
 	overlayRevPicker
+	// overlayContainer chooses which container of a multi-container pod to read
+	// logs from or exec into.
+	overlayContainer
 )
 
 const (
@@ -177,6 +180,8 @@ type Model struct {
 	windowTop      int
 	// revPicker is the branch/tag list backing overlayRevPicker.
 	revPicker revPickerState
+	// picker is the container chooser backing overlayContainer.
+	picker containerPicker
 
 	// ---- pager views (diff, manifest, logs, events) ----
 	pager      []string

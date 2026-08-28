@@ -174,14 +174,14 @@ func (m *Model) handleTreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pager, m.pagerTitle = nil, "diff"
 		return m, m.loadResourceDiffCmd(*m.app, nodes)
 	case "L", "l":
-		if n := m.currentNode(); n != nil && m.app != nil {
-			if !n.IsPod() {
-				m.setToast("logs are only available for pods")
-				return m, nil
-			}
-			m.push(screenLogs)
-			m.pager, m.pagerTitle = nil, "logs · "+n.Name
-			return m, m.loadLogsCmd(*m.app, *n)
+		if n := m.currentNode(); n != nil {
+			return m, m.openContainerPicker(*n, containerForLogs)
+		}
+	case "e":
+		// A shell in the container. It goes through Argo CD rather than
+		// kubectl, so the session inherits its RBAC and lands in its audit log.
+		if n := m.currentNode(); n != nil {
+			return m, m.openContainerPicker(*n, containerForExec)
 		}
 	case "s":
 		return m.openTreeSyncModal()
