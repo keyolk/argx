@@ -53,12 +53,15 @@ type styles struct {
 	header   lipgloss.Style
 	footer   lipgloss.Style
 	filter   lipgloss.Style
-	mark     lipgloss.Style
-	modal    lipgloss.Style
-	modalErr lipgloss.Style
-	diffAdd  lipgloss.Style
-	diffDel  lipgloss.Style
-	diffHunk lipgloss.Style
+	// cursorCell is the text cursor in the filter prompt: reverse video over
+	// the character it sits on, so its position is unambiguous.
+	cursorCell lipgloss.Style
+	mark       lipgloss.Style
+	modal      lipgloss.Style
+	modalErr   lipgloss.Style
+	diffAdd    lipgloss.Style
+	diffDel    lipgloss.Style
+	diffHunk   lipgloss.Style
 
 	// ctx holds one style per fleet position; see ctxPalette.
 	ctx []lipgloss.Style
@@ -79,23 +82,24 @@ func newStyles() *styles {
 	// redirected, and matches where Bubble Tea writes.
 	r := lipgloss.NewRenderer(os.Stderr)
 	s := &styles{
-		renderer: r,
-		title:    r.NewStyle().Bold(true).Foreground(cAccent),
-		subtitle: r.NewStyle().Foreground(cDim),
-		dim:      r.NewStyle().Foreground(cDim),
-		accent:   r.NewStyle().Foreground(cAccent),
-		info:     r.NewStyle().Foreground(cInfo),
-		success:  r.NewStyle().Foreground(cSuccess),
-		warn:     r.NewStyle().Foreground(cWarn),
-		err:      r.NewStyle().Foreground(cError),
-		selected: r.NewStyle().Bold(true).Foreground(cAccent),
-		header:   r.NewStyle().Bold(true).Foreground(cDim),
-		footer:   r.NewStyle().Foreground(cDim),
-		filter:   r.NewStyle().Foreground(cInfo),
-		mark:     r.NewStyle().Bold(true).Foreground(cMark),
-		diffAdd:  r.NewStyle().Foreground(cSuccess),
-		diffDel:  r.NewStyle().Foreground(cError),
-		diffHunk: r.NewStyle().Foreground(cInfo),
+		renderer:   r,
+		title:      r.NewStyle().Bold(true).Foreground(cAccent),
+		subtitle:   r.NewStyle().Foreground(cDim),
+		dim:        r.NewStyle().Foreground(cDim),
+		accent:     r.NewStyle().Foreground(cAccent),
+		info:       r.NewStyle().Foreground(cInfo),
+		success:    r.NewStyle().Foreground(cSuccess),
+		warn:       r.NewStyle().Foreground(cWarn),
+		err:        r.NewStyle().Foreground(cError),
+		selected:   r.NewStyle().Bold(true).Foreground(cAccent),
+		header:     r.NewStyle().Bold(true).Foreground(cDim),
+		footer:     r.NewStyle().Foreground(cDim),
+		filter:     r.NewStyle().Foreground(cInfo),
+		cursorCell: r.NewStyle().Reverse(true),
+		mark:       r.NewStyle().Bold(true).Foreground(cMark),
+		diffAdd:    r.NewStyle().Foreground(cSuccess),
+		diffDel:    r.NewStyle().Foreground(cError),
+		diffHunk:   r.NewStyle().Foreground(cInfo),
 	}
 	s.modal = r.NewStyle().
 		Border(lipgloss.RoundedBorder()).

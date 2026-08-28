@@ -224,6 +224,18 @@ func (m *Model) handleWindowsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if m.app != nil {
 			return m, m.loadWindowsCmd(*m.app)
 		}
+	case "o":
+		// Windows are edited in the Argo CD UI, on the project — which is where
+		// `o` goes from here, rather than to the application's own page.
+		if m.app != nil {
+			return m, m.openBrowserCmd([]string{m.projectURL(m.app)})
+		}
+	case "O":
+		// The application's own page, for the reader who came here to check a
+		// schedule and now wants the app itself.
+		if m.app != nil {
+			return m, m.openBrowserCmd([]string{m.appURL(m.app)})
+		}
 	case "h", "left":
 		m.pop()
 		return m, nil

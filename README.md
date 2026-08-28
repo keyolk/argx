@@ -186,6 +186,8 @@ and bottom, `/` filter, `?` help, `Esc` back, `q` quit at the list.
 | `1` `2` `3` | — | pick a tab | ← | ← |
 | `A` | toggle 15s auto-refresh | — | — | — |
 | `E` | show unreachable servers | — | — | — |
+| `S` | application sets | — | — | — |
+| `w` | — | sync windows | ← | ← |
 
 In the diff, manifest, and log views `/` acts as a grep. `Esc` clears a filter,
 `Enter` keeps it.
@@ -200,10 +202,15 @@ web                       name contains web
 kind:pod        k:pod     kind (prefix match; also matches the API group)
 status:degraded s:degraded  health — status:none finds unchecked kinds
 ns:prod         n:prod    namespace
+label:app=web   l:app     a label
 kind:pod status:degraded  terms are ANDed
 ```
 
-Prefixes and values are case-insensitive, so `kind:statefulset` works.
+Prefixes and values are case-insensitive, so `kind:statefulset` works. Labels
+are available only for the kinds Argo CD reports networking for — Pods,
+Services, Ingresses — so a label term excludes every other kind rather than
+matching it vacuously, which is the reading that makes `l:app=web` mean what it
+looks like.
 
 ## Actions
 
@@ -227,6 +234,32 @@ Prefixes and values are case-insensitive, so `kind:statefulset` works.
   receive an error.
 - **terminate** (DETAILS) stops a running sync, and says that the application is
   left partially applied.
+
+## Application sets
+
+`S` toggles between the applications and the ApplicationSets that generate
+them. They are peers, not a stack — the same key gets you back.
+
+```
+   NAME                                 CONTEXT              GENERATORS           PROJECT  APPS
+▸✓ applicationset-addon-base            argocd.example.com   merge(clusters+git)  default  0
+ ✗ broken-stacks                        argocd-eu.example…   git                  infra    0
+```
+
+This list exists because **a broken generator is invisible from the application
+side** — the applications it would have produced simply do not exist, so no row
+can be red. The only place that failure surfaces is the ApplicationSet's own
+conditions, and `status:error` filters straight to it.
+
+`gen:` filters by generator kind, including inside a nested one, so `gen:git`
+finds a `merge(clusters+git)` too. `y` shows the full spec, `o` opens it in the
+browser, and `enter` shows the applications it generated.
+
+That last one only works when Argo CD recorded the membership, which is not
+guaranteed: the controller's tracking label is absent when the template sets its
+own labels, and `status.applicationStatus` is populated only under a
+progressive-sync strategy. When neither is available argx says so rather than
+showing an unfiltered list that would read as "it generated everything".
 
 ## Sync windows
 
@@ -285,11 +318,30 @@ dropping lines.
 
 ### Application filter
 
+An unprefixed term searches everything the row shows — name, context, project,
+destination, status, revision, repo, path — so anything you can see, you can
+find. Prefixes narrow to one axis:
+
 ```
-web                        name, project, destination, or status
-ctx:dl   context:dl-prod   c:sb        one server
-ctx:sb api                 terms are ANDed
+web                        anything the row shows
+label:env=prod  l:env      a label key and value, or just the key
+-l:env                     applications *without* the label
+ctx:staging     c:stg      the Argo CD server
+proj:platform   ns:web     project, destination namespace
+cluster:apne2              destination cluster
+sync:outofsync  health:degraded
+ctx:stg label:env=prod     terms are ANDed
 ```
+
+Label keys match on their suffix, so `l:env` finds `example.com/env` without
+typing the domain. **Tab completes** the word under the cursor — field names,
+then the label keys, values, contexts, projects, namespaces and clusters the
+loaded applications actually carry. One press advances as far as is
+unambiguous; when that adds nothing, the choices are listed.
+
+While the prompt is open the arrows split by axis: **← →** move the text cursor
+inside the query, **↑ ↓** move through the rows it matched. `ctrl+a`/`ctrl+e`
+jump to the ends, `ctrl+w` deletes a word, `alt+←`/`alt+→` move by word.
 
 ## Terminal
 

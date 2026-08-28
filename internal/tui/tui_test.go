@@ -131,7 +131,7 @@ func TestMarkedAppsUsesDisplayOrder(t *testing.T) {
 // the user cannot see is how a sync hits the wrong thing.
 func TestMarkAllRespectsFilter(t *testing.T) {
 	m := newTestModel(t, "web-prod", "web-dev", "api-prod")
-	m.appFilter = "prod"
+	m.appFilter = parseAppFilter("prod")
 	m.applyAppFilter()
 
 	press(t, m, "a")
@@ -232,7 +232,7 @@ func TestCursorStaysOnAppAcrossFilterChange(t *testing.T) {
 	m := newTestModel(t, "alpha", "beta", "gamma")
 	m.appCur = 2 // gamma
 
-	m.appFilter = "a"
+	m.appFilter = parseAppFilter("a")
 	m.applyAppFilter()
 
 	if got := m.currentApp(); got == nil || got.Name() != "gamma" {

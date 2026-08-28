@@ -244,8 +244,8 @@ func (m *Model) emptyAppsText() string {
 	if m.loading {
 		return "loading applications…"
 	}
-	if m.appFilter != "" {
-		return fmt.Sprintf("no applications match %q", m.appFilter)
+	if !m.appFilter.empty() {
+		return fmt.Sprintf("no applications match %q", m.appFilter.String())
 	}
 	if len(m.fleetErrs) > 0 {
 		// Every server failed. Saying "no applications" here would report an

@@ -151,7 +151,7 @@ func TestContextFilterNarrowsToOneServer(t *testing.T) {
 	})
 
 	for _, q := range []string{"ctx:dl", "context:dl-prod", "c:dl"} {
-		m.appFilter = q
+		m.appFilter = parseAppFilter(q)
 		m.applyAppFilter()
 		if len(m.appRows) != 1 {
 			t.Fatalf("%q matched %d rows, want 1", q, len(m.appRows))
@@ -169,7 +169,7 @@ func TestContextFilterCombinesWithOtherTerms(t *testing.T) {
 		"dl-prod": {"web"},
 	})
 
-	m.appFilter = "ctx:sb api"
+	m.appFilter = parseAppFilter("ctx:sb api")
 	m.applyAppFilter()
 	if len(m.appRows) != 1 {
 		t.Fatalf("matched %d rows, want just sb-prod/api", len(m.appRows))
@@ -187,7 +187,7 @@ func TestMarkAllRespectsTheContextFilter(t *testing.T) {
 		"sb-prod": {"web", "api"},
 		"dl-prod": {"web"},
 	})
-	m.appFilter = "ctx:sb-prod"
+	m.appFilter = parseAppFilter("ctx:sb-prod")
 	m.applyAppFilter()
 
 	press(t, m, "a")
@@ -235,7 +235,7 @@ func TestSingleServerSyncPromptStaysFlat(t *testing.T) {
 		"sb-prod": {"web", "api"},
 		"dl-prod": {"worker"},
 	})
-	m.appFilter = "ctx:sb-prod"
+	m.appFilter = parseAppFilter("ctx:sb-prod")
 	m.applyAppFilter()
 	press(t, m, "a", "s", "enter")
 

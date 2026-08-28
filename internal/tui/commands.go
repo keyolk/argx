@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os/exec"
@@ -374,4 +375,55 @@ func fleetErrorText(errs []argocd.FleetError) error {
 		b.WriteString("\n  " + e.Context + "\n    " + e.Err.Error() + "\n")
 	}
 	return errors.New(strings.TrimRight(b.String(), "\n"))
+}
+
+// appSetsMsg carries the fleet's ApplicationSets.
+type appSetsMsg struct {
+	sets []argocd.ApplicationSet
+	errs []argocd.FleetError
+}
+
+// specMsgPager reuses the pager for a rendered spec.
+func (m *Model) loadAppSetsCmd() tea.Cmd {
+	m.loading, m.loadWhat = true, "application sets"
+	fleet := m.fleet
+	ctx := m.ctx
+	return func() tea.Msg {
+		c, cancel := context.WithTimeout(ctx, 60*time.Second)
+		defer cancel()
+		sets, errs := fleet.ListApplicationSets(c, nil)
+		return appSetsMsg{sets: sets, errs: errs}
+	}
+}
+
+// loadSetSpecCmd renders an ApplicationSet's spec into the pager.
+//
+// The stored copy is re-fetched rather than formatted from the list: the list
+// response omits nothing today, but a spec is what someone reads to reproduce a
+// generator, and reading a possibly-stale copy for that is the wrong tradeoff.
+func (m *Model) loadSetSpecCmd(set argocd.ApplicationSet) tea.Cmd {
+	m.reqID++
+	id := m.reqID
+	m.loading, m.loadWhat = true, "spec"
+
+	client, err := m.fleet.ClientForSet(&set)
+	if err != nil {
+		return func() tea.Msg { return pagerMsg{id: id, err: err} }
+	}
+	ctx := m.ctx
+	title := "spec · " + set.Name()
+
+	return func() tea.Msg {
+		c, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+		fresh, err := client.GetApplicationSet(c, set.Name(), set.Namespace())
+		if err != nil {
+			return pagerMsg{id: id, err: err}
+		}
+		b, err := json.MarshalIndent(fresh, "", "  ")
+		if err != nil {
+			return pagerMsg{id: id, err: err}
+		}
+		return pagerMsg{id: id, title: title, lines: strings.Split(string(b), "\n")}
+	}
 }

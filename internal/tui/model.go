@@ -36,6 +36,10 @@ type screen int
 
 const (
 	screenApps screen = iota
+	// screenAppSets lists the ApplicationSets that generate the applications.
+	// A broken generator is invisible from the application side — what it would
+	// have produced simply does not exist — so it needs its own list.
+	screenAppSets
 	// screenApp is the single-application view; which tab it shows is held
 	// separately in Model.tab, so switching tabs does not disturb the screen
 	// stack that Esc unwinds.
@@ -119,7 +123,7 @@ type Model struct {
 	appRows   []int // indices into apps, after filtering
 	appCur    int
 	appTop    int
-	appFilter string
+	appFilter appFilterQuery
 	// appMarks keys on context+name, never name alone: two servers can host an
 	// application with the same name, and a mark that selected both would sync
 	// a cluster the user never looked at.
@@ -127,6 +131,19 @@ type Model struct {
 	// fleetErrs records servers that failed the last list, so a partial result
 	// is reported as partial rather than passing for the whole fleet.
 	fleetErrs []argocd.FleetError
+	// completions indexes what the loaded applications can be filtered by, so
+	// the prompt offers label keys and values that something actually carries.
+	completions *completionSource
+
+	// ---- application set list ----
+	appsets      []argocd.ApplicationSet
+	appsetRows   []int
+	appsetCur    int
+	appsetTop    int
+	appsetFilter string
+	// appsetsLoaded records that a fetch has happened, so an empty list is
+	// distinguishable from one that was never asked for.
+	appsetsLoaded bool
 
 	// ---- the focused application ----
 	app *argocd.Application
@@ -168,6 +185,14 @@ type Model struct {
 
 	// ---- filter input ----
 	filtering bool
+	// filterCur is the text cursor's position within the query, counted in
+	// runes so a multi-byte character is never split. It is clamped on every
+	// edit rather than trusted, because the query is also set from outside the
+	// prompt (entering a screen, clearing a filter).
+	filterCur int
+	// completionHint is the candidate list shown when a Tab press could not
+	// narrow further. Cleared by any edit, since it described the old word.
+	completionHint []string
 
 	// ---- async state ----
 	loading  bool
@@ -362,6 +387,16 @@ func (m *Model) appURL(app *argocd.Application) string {
 		return ""
 	}
 	return u
+}
+
+// projectURL is the web UI address of an application's project, which is where
+// its sync windows are defined and edited.
+func (m *Model) projectURL(app *argocd.Application) string {
+	c, err := m.fleet.ClientFor(app)
+	if err != nil {
+		return ""
+	}
+	return c.Context().BaseURL() + "/settings/projects/" + app.Spec.Project
 }
 
 // multiServer reports whether this session spans more than one Argo CD, which

@@ -113,7 +113,7 @@ func (m *Model) applyAppFilter() {
 	}
 	m.appRows = m.appRows[:0]
 	for i := range m.apps {
-		if matchApp(&m.apps[i], m.appFilter) {
+		if m.appFilter.match(&m.apps[i]) {
 			m.appRows = append(m.appRows, i)
 		}
 	}
@@ -129,51 +129,6 @@ func (m *Model) applyAppFilter() {
 		}
 	}
 	m.clampScroll()
-}
-
-// matchApp filters the application list.
-//
-// Terms are matched case-insensitively against name, project, destination, and
-// status, with one prefixed field: `ctx:` narrows to a server. With several
-// Argo CDs in one list, "show me only staging" is the first thing anyone asks
-// for, and an unprefixed substring cannot express it — a context name shares
-// words with cluster and project names.
-func matchApp(a *argocd.Application, q string) bool {
-	if q == "" {
-		return true
-	}
-	hay := strings.ToLower(strings.Join([]string{
-		a.Name(),
-		a.Spec.Project,
-		a.Spec.Destination.Namespace,
-		a.Spec.Destination.Cluster(),
-		a.Status.Sync.Status,
-		a.Status.Health.Status,
-	}, " "))
-	ctxName := strings.ToLower(a.Context)
-
-	for _, term := range strings.Fields(strings.ToLower(q)) {
-		if v, ok := cutPrefix(term, "ctx:", "context:", "c:"); ok {
-			if v != "" && !strings.Contains(ctxName, v) {
-				return false
-			}
-			continue
-		}
-		if !strings.Contains(hay, term) {
-			return false
-		}
-	}
-	return true
-}
-
-// cutPrefix returns the value after the first matching prefix.
-func cutPrefix(s string, prefixes ...string) (string, bool) {
-	for _, p := range prefixes {
-		if v, ok := strings.CutPrefix(s, p); ok {
-			return v, true
-		}
-	}
-	return "", false
 }
 
 func (m *Model) applyTreeFilter() {

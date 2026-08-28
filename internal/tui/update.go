@@ -24,6 +24,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.apps = msg.apps
 		m.fleetErrs = msg.errs
+		// Completions are rebuilt from what actually arrived, so the prompt
+		// never offers a label key nothing carries.
+		m.completions = buildCompletions(msg.apps)
 		m.pruneAppMarks()
 		m.applyAppFilter()
 		// A server that failed is reported, but not as a modal that has to be
@@ -103,6 +106,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.applyRevFilter()
 		return m, nil
 
+	case appSetsMsg:
+		m.loading = false
+		m.appsets = msg.sets
+		m.appsetsLoaded = true
+		m.fleetErrs = msg.errs
+		m.applySetFilter()
+		return m, nil
+
 	case windowsMsg:
 		if msg.id != m.windowID {
 			return m, nil // stale: the user moved on before this landed
@@ -168,6 +179,20 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.pop()
 		return m, nil
+	case "S":
+		// The two lists are peers, not a stack: S toggles between them from
+		// either side, so getting back is the same key that got you there.
+		switch m.screen {
+		case screenApps:
+			m.screen = screenAppSets
+			if !m.appsetsLoaded {
+				return m, m.loadAppSetsCmd()
+			}
+			return m, nil
+		case screenAppSets:
+			m.screen = screenApps
+			return m, nil
+		}
 	case "?":
 		if m.screen == screenHelp {
 			m.pop()
@@ -184,14 +209,21 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case "/":
 		m.filtering = true
+		// Open at the end of whatever query is already there, so reopening a
+		// filter continues it rather than overwriting from the front.
+		m.filterCur = len([]rune(*m.filterTarget()))
 		return m, nil
 	}
 
 	switch m.screen {
 	case screenApps:
 		return m.handleAppsKey(msg)
+	case screenAppSets:
+		return m.handleAppSetsKey(msg)
 	case screenApp:
 		return m.handleAppKey(msg)
+	case screenWindows:
+		return m.handleWindowsKey(msg)
 	case screenDiff, screenManifest, screenLogs, screenEvents, screenHelp:
 		return m.handlePagerKey(msg)
 	}
@@ -273,6 +305,7 @@ func (m *Model) selectTab(t tab) tea.Cmd {
 	// different things, and a stale filter that hides every row reads as an
 	// empty tab.
 	m.filtering = false
+	m.filterCur = 0
 	if t == tabDetails {
 		// Section headings are not selectable, and row 0 is one, so nudge the
 		// cursor onto the first real row rather than opening on a heading.

@@ -17,6 +17,8 @@ func (m *Model) View() string {
 	switch m.screen {
 	case screenApps:
 		body = m.renderApps()
+	case screenAppSets:
+		body = m.renderAppSets()
 	case screenApp:
 		body = m.renderAppTab()
 	case screenWindows:
@@ -54,6 +56,8 @@ func (m *Model) renderHeader() string {
 	switch m.screen {
 	case screenApps:
 		left = m.st.title.Render("argx") + m.st.dim.Render(" · applications")
+	case screenAppSets:
+		left = m.st.title.Render("argx") + m.st.dim.Render(" · application sets")
 	case screenApp:
 		name := ""
 		if m.app != nil {

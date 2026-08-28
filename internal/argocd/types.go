@@ -247,12 +247,31 @@ type Tree struct {
 // Node is one resource in the tree.
 type Node struct {
 	ResourceRef
-	ParentRefs      []ResourceRef `json:"parentRefs"`
-	Health          *Health       `json:"health"`
-	Info            []InfoItem    `json:"info"`
-	CreatedAt       *time.Time    `json:"createdAt"`
-	ResourceVersion string        `json:"resourceVersion"`
-	Images          []string      `json:"images"`
+	ParentRefs      []ResourceRef   `json:"parentRefs"`
+	Health          *Health         `json:"health"`
+	Info            []InfoItem      `json:"info"`
+	NetworkingInfo  *NetworkingInfo `json:"networkingInfo"`
+	CreatedAt       *time.Time      `json:"createdAt"`
+	ResourceVersion string          `json:"resourceVersion"`
+	Images          []string        `json:"images"`
+}
+
+// NetworkingInfo is the networking detail Argo CD attaches to some nodes. It is
+// the only place a resource tree carries labels, and only for the kinds Argo CD
+// tracks networking for — a Pod has them, a ConfigMap does not.
+type NetworkingInfo struct {
+	Labels       map[string]string `json:"labels"`
+	TargetLabels map[string]string `json:"targetLabels"`
+}
+
+// Labels are the resource's labels, or nil when Argo CD reports none for this
+// kind. Nil is a real answer here, not missing data: the tree API simply does
+// not carry labels for most kinds.
+func (n Node) Labels() map[string]string {
+	if n.NetworkingInfo == nil {
+		return nil
+	}
+	return n.NetworkingInfo.Labels
 }
 
 // InfoItem is one of the key/value facts Argo CD attaches to a tree node.

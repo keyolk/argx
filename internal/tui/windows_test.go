@@ -319,3 +319,71 @@ func TestEachSequenceRejectsItsOwnStaleResponses(t *testing.T) {
 		t.Error("a stale windows response was applied")
 	}
 }
+
+// The window view is a list like any other, and its keys must actually reach
+// it: the screen was unreachable from the key dispatch once, so j and k did
+// nothing at all.
+func TestWindowViewNavigates(t *testing.T) {
+	m := windowModel(t,
+		&argocd.AppSyncWindows{CanSync: true},
+		[]argocd.SyncWindow{
+			win("allow", "a", "1h"), win("deny", "b", "2h"), win("allow", "c", "3h"),
+		},
+	)
+	m.screen = screenWindows
+
+	press(t, m, "j")
+	if m.windowCur != 1 {
+		t.Errorf("j moved to %d, want 1 — the key never reached the view", m.windowCur)
+	}
+	press(t, m, "j")
+	if m.windowCur != 2 {
+		t.Errorf("j moved to %d, want 2", m.windowCur)
+	}
+	press(t, m, "k")
+	if m.windowCur != 1 {
+		t.Errorf("k moved to %d, want 1", m.windowCur)
+	}
+	press(t, m, "G")
+	if m.windowCur != 2 {
+		t.Errorf("G moved to %d, want the last row", m.windowCur)
+	}
+	press(t, m, "g")
+	if m.windowCur != 0 {
+		t.Errorf("g moved to %d, want 0", m.windowCur)
+	}
+	// Past either end the cursor clamps rather than wrapping or going negative.
+	press(t, m, "k", "k")
+	if m.windowCur != 0 {
+		t.Errorf("k past the top moved to %d, want 0", m.windowCur)
+	}
+	press(t, m, "down")
+	if m.windowCur != 1 {
+		t.Errorf("the down arrow moved to %d, want 1", m.windowCur)
+	}
+}
+
+// Windows are edited on the project, so that is where `o` goes; the
+// application's own page stays reachable with `O`.
+func TestWindowViewOpensTheProject(t *testing.T) {
+	m := windowModel(t, &argocd.AppSyncWindows{CanSync: true}, nil)
+	m.screen = screenWindows
+
+	url := m.projectURL(m.app)
+	if !strings.Contains(url, "/settings/projects/") {
+		t.Errorf("projectURL = %q, want the project settings page", url)
+	}
+	if !strings.Contains(url, m.app.Spec.Project) {
+		t.Errorf("projectURL = %q, want it to name the project", url)
+	}
+
+	if cmd := press(t, m, "o"); cmd == nil {
+		t.Error("o should open the project in a browser")
+	}
+	if cmd := press(t, m, "O"); cmd == nil {
+		t.Error("O should open the application in a browser")
+	}
+	if m.screen != screenWindows {
+		t.Errorf("opening a browser left the view for %v", m.screen)
+	}
+}

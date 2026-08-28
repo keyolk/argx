@@ -20,7 +20,14 @@ import (
 //	status:degraded  health status
 //	s:degraded     same, abbreviated
 //	ns:prod        namespace
+//	label:app=web  a label key and value
+//	l:app          a label key, any value
 //	kind:pod web   both — terms are ANDed
+//
+// Labels are only available for the kinds Argo CD reports networking for —
+// Pods, Services, Ingresses. A label term therefore excludes every other kind
+// rather than matching it vacuously, which is the reading that makes
+// `l:app=web` mean what it looks like.
 //
 // Prefixes are matched case-insensitively and the whole query is lowercased,
 // because Kubernetes kinds are conventionally capitalized and nobody types
@@ -34,6 +41,7 @@ type resourceFilter struct {
 	kind   []string
 	status []string
 	ns     []string
+	labels []labelTerm
 }
 
 // parseResourceFilter splits a query into its per-field terms.
@@ -48,7 +56,17 @@ func parseResourceFilter(q string) resourceFilter {
 			f.name = append(f.name, strings.TrimSuffix(term, ":"))
 			continue
 		}
+		negate := false
+		if strings.HasPrefix(field, "-") && len(field) > 1 {
+			negate, field = true, field[1:]
+		}
+
 		switch field {
+		case "label", "l", "labels":
+			k, v, hasValue := strings.Cut(value, "=")
+			f.labels = append(f.labels, labelTerm{
+				key: k, value: v, negate: negate, hasValue: hasValue,
+			})
 		case "kind", "k":
 			f.kind = append(f.kind, value)
 		case "status", "health", "s", "h":
@@ -111,9 +129,14 @@ func (f resourceFilter) match(n argocd.Node) bool {
 			return false
 		}
 	}
+	for _, t := range f.labels {
+		if t.match(n.Labels()) != !t.negate {
+			return false
+		}
+	}
 	return true
 }
 
 // resourceFilterHint is shown under the filter prompt so the field prefixes are
 // discoverable without opening help.
-const resourceFilterHint = "name · kind:pod · status:degraded · ns:prod"
+const resourceFilterHint = "name · kind:pod · status:degraded · ns:prod · label:app=web"
