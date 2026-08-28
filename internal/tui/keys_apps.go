@@ -68,7 +68,13 @@ func (m *Model) handleAppsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.histCur, m.histTop, m.detailCur = 0, 0, 0
 			m.tree, m.treeRows = nil, nil
 			m.treeMarks = map[string]bool{}
-			return m, m.loadTreeCmd(*a)
+			m.windows, m.projectWindows = nil, nil
+			m.windowCur, m.windowTop = 0, 0
+			// The windows load alongside the tree so DETAILS and the status
+			// line can say whether a sync is blocked without the reader going
+			// looking. It is one small request, and finding out by pressing `s`
+			// and being rejected is worse.
+			return m, tea.Batch(m.loadTreeCmd(*a), m.loadWindowsCmd(*a))
 		}
 	case "d":
 		if a := m.currentApp(); a != nil {

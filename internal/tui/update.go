@@ -37,7 +37,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case treeMsg:
-		if msg.id != m.reqID {
+		if msg.id != m.treeID {
 			return m, nil // stale: the user moved on before this landed
 		}
 		m.loading = false
@@ -101,6 +101,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.revPicker.items = msg.items
 		m.applyRevFilter()
+		return m, nil
+
+	case windowsMsg:
+		if msg.id != m.windowID {
+			return m, nil // stale: the user moved on before this landed
+		}
+		m.loading = false
+		if msg.err != nil {
+			m.showError(msg.err)
+			return m, nil
+		}
+		m.windows, m.projectWindows = msg.windows, msg.project
+		m.windowCur, m.windowTop = 0, 0
 		return m, nil
 
 	case toastMsg:
@@ -209,6 +222,14 @@ func (m *Model) handleAppKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "r", "ctrl+r":
 		if m.app != nil {
 			return m, m.loadTreeCmd(*m.app)
+		}
+		return m, nil
+	case "w":
+		// Available from every tab: whether a sync is allowed to run is a
+		// property of the application, not of the lens you happen to be using.
+		if m.app != nil {
+			m.push(screenWindows)
+			return m, m.loadWindowsCmd(*m.app)
 		}
 		return m, nil
 	case "h", "left":

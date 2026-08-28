@@ -19,6 +19,8 @@ func (m *Model) View() string {
 		body = m.renderApps()
 	case screenApp:
 		body = m.renderAppTab()
+	case screenWindows:
+		body = m.renderWindows()
 	case screenHelp:
 		body = m.renderHelp()
 	default:
@@ -66,6 +68,13 @@ func (m *Model) renderHeader() string {
 			left = m.ctxStyle(m.app.Context).Render(m.app.Context) +
 				m.st.dim.Render(" · ") + left
 		}
+	case screenWindows:
+		name := ""
+		if m.app != nil {
+			name = m.app.Spec.Project
+		}
+		left = m.st.title.Render("argx") + m.st.dim.Render(" · sync windows · ") +
+			m.st.accent.Render(name)
 	case screenHelp:
 		left = m.st.title.Render("argx") + m.st.dim.Render(" · help")
 	default:

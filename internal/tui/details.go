@@ -24,6 +24,8 @@ const (
 	detailAutoPrune
 	detailSelfHeal
 	detailTerminate
+	// detailWindows opens the sync-window view.
+	detailWindows
 )
 
 // detailRow is one line of the DETAILS tab.
@@ -95,6 +97,20 @@ func (m *Model) detailRows() []detailRow {
 		pruneRow.value, healRow.value = "—", "—"
 	}
 	rows = append(rows, pruneRow, healRow)
+
+	// The schedule sits with the sync policy because it answers the same
+	// question — when does this application change — and a reader looking at
+	// auto-sync is one row away from finding out a window blocks it anyway.
+	win := detailRow{kind: detailWindows, label: "sync windows", action: "enter: view"}
+	switch text, blocked := m.windowSummary(); {
+	case text == "":
+		win.value = m.st.dim.Render("not loaded")
+	case blocked:
+		win.value = m.st.err.Render(text)
+	default:
+		win.value = text
+	}
+	rows = append(rows, win)
 
 	rows = append(rows,
 		detailRow{kind: detailSection, label: "DESTINATION"},
@@ -223,6 +239,10 @@ func (m *Model) handleDetailEnter() (tea.Model, tea.Cmd) {
 
 	case detailSelfHeal:
 		return m, m.setAutoSyncCmd(true, prune, !selfHeal)
+
+	case detailWindows:
+		m.push(screenWindows)
+		return m, m.loadWindowsCmd(*a)
 
 	case detailTerminate:
 		m.confirm = confirmState{

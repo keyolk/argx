@@ -154,3 +154,48 @@ func (m *Model) loadRefsCmd(app argocd.Application) tea.Cmd {
 		return refsMsg{items: items}
 	}
 }
+
+// windowsMsg carries an application's sync windows.
+type windowsMsg struct {
+	id      uint64
+	windows *argocd.AppSyncWindows
+	project []argocd.SyncWindow
+	err     error
+}
+
+// loadWindowsCmd fetches both views of the schedule: what governs this
+// application, and everything the project defines.
+//
+// Both, because they answer different questions. "Can I sync right now" needs
+// the application's own windows and the server's verdict; "why is this blocked"
+// needs the project's full set, where a window whose selector nearly matched is
+// the usual answer.
+func (m *Model) loadWindowsCmd(app argocd.Application) tea.Cmd {
+	m.windowID++
+	id := m.windowID
+	m.loading, m.loadWhat = true, "sync windows"
+
+	client, err := m.client(&app)
+	if err != nil {
+		return func() tea.Msg { return windowsMsg{id: id, err: err} }
+	}
+	ctx := m.ctx
+	project := app.Spec.Project
+
+	return func() tea.Msg {
+		c, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+
+		w, err := client.SyncWindows(c, &app)
+		if err != nil {
+			return windowsMsg{id: id, err: err}
+		}
+		// The project's full set is a bonus, not a requirement: a session
+		// without project read access still gets the application's own windows.
+		pw, perr := client.ProjectSyncWindows(c, project)
+		if perr != nil {
+			pw = nil
+		}
+		return windowsMsg{id: id, windows: w, project: pw}
+	}
+}

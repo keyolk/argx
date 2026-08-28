@@ -69,8 +69,8 @@ func (m *Model) loadAppsCmd() tea.Cmd {
 }
 
 func (m *Model) loadTreeCmd(app argocd.Application) tea.Cmd {
-	m.reqID++
-	id := m.reqID
+	m.treeID++
+	id := m.treeID
 	m.loading, m.loadWhat = true, "resource tree"
 	client, err := m.client(&app)
 	if err != nil {

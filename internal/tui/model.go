@@ -44,6 +44,9 @@ const (
 	screenManifest
 	screenLogs
 	screenEvents
+	// screenWindows lists the sync windows governing the focused application's
+	// project — when a sync is allowed to run, and when it is blocked.
+	screenWindows
 	screenHelp
 )
 
@@ -145,6 +148,15 @@ type Model struct {
 
 	// ---- DETAILS tab ----
 	detailCur int
+	// windows is the sync-window state for the focused application, fetched
+	// lazily: most sessions never look at it, and it is one request per app.
+	windows *argocd.AppSyncWindows
+	// projectWindows is every window on the project, including those that do
+	// not apply to this application. Seeing only the applicable ones makes a
+	// window that *nearly* matched impossible to notice.
+	projectWindows []argocd.SyncWindow
+	windowCur      int
+	windowTop      int
 	// revPicker is the branch/tag list backing overlayRevPicker.
 	revPicker revPickerState
 
@@ -160,9 +172,15 @@ type Model struct {
 	// ---- async state ----
 	loading  bool
 	loadWhat string
-	// reqID stamps in-flight requests so a result whose target changed
-	// mid-flight is dropped instead of overwriting the current view.
-	reqID uint64
+	// Request stamps, one sequence per kind of fetch, so a result whose target
+	// changed mid-flight is dropped instead of overwriting the current view.
+	//
+	// Separate sequences because several fetches are issued together: a single
+	// counter shared by a tea.Batch has the second command invalidate the
+	// first's response, and the tree would simply never arrive.
+	reqID    uint64 // pager views: diff, manifest, logs, events
+	treeID   uint64
+	windowID uint64
 
 	// ---- transient feedback ----
 	toast       string

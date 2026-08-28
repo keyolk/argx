@@ -72,7 +72,7 @@ func fixtureTree(t *testing.T, m *Model) {
 	}}
 
 	app := m.apps[0]
-	m.Update(treeMsg{id: m.reqID, app: &app, rows: tree.Flatten("argocd", "prod.argocd")})
+	m.Update(treeMsg{id: m.treeID, app: &app, rows: tree.Flatten("argocd", "prod.argocd")})
 	m.screen = screenApp
 	m.tab = tabResources
 }

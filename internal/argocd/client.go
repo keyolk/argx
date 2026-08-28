@@ -403,3 +403,84 @@ func (c *Client) Events(ctx context.Context, name, appNamespace string) ([]Event
 	}
 	return out.Items, nil
 }
+
+// SyncWindow is one allow or deny window on an AppProject.
+//
+// Windows are what stop a sync from running outside an agreed maintenance
+// period. They are defined per project, so one window governs every application
+// in it — which is why argx shows them but does not edit them.
+type SyncWindow struct {
+	// Kind is "allow" or "deny".
+	Kind string `json:"kind"`
+	// Schedule is when the window opens, in cron format.
+	Schedule string `json:"schedule"`
+	// Duration is how long it stays open, e.g. "1h30m".
+	Duration string `json:"duration"`
+	// TimeZone the schedule is interpreted in; empty means UTC.
+	TimeZone string `json:"timeZone"`
+	// ManualSync allows a human-triggered sync during a window that would
+	// otherwise block one.
+	ManualSync bool `json:"manualSync"`
+
+	// The selectors that decide which applications a window applies to. All
+	// empty means the whole project.
+	Applications []string `json:"applications"`
+	Clusters     []string `json:"clusters"`
+	Namespaces   []string `json:"namespaces"`
+}
+
+// Zone renders the window's time zone, naming the default rather than leaving
+// it blank — a schedule with no zone is read in UTC, and not saying so invites
+// reading it as local time.
+func (w SyncWindow) Zone() string {
+	if w.TimeZone == "" {
+		return "UTC"
+	}
+	return w.TimeZone
+}
+
+// Blocks reports whether this window prevents syncing while it is open.
+func (w SyncWindow) Blocks() bool { return w.Kind == "deny" }
+
+// AppSyncWindows is what applies to one application right now.
+type AppSyncWindows struct {
+	// ActiveWindows are open at this moment.
+	ActiveWindows []SyncWindow `json:"activeWindows"`
+	// AssignedWindows are every window that governs this application,
+	// open or not.
+	AssignedWindows []SyncWindow `json:"assignedWindows"`
+	// CanSync is the server's own verdict, which accounts for the interaction
+	// between allow and deny windows — argx reports it rather than recomputing
+	// it, because the precedence rules are the server's to define.
+	CanSync bool `json:"canSync"`
+}
+
+// SyncWindows fetches the windows governing one application.
+func (c *Client) SyncWindows(ctx context.Context, app *Application) (*AppSyncWindows, error) {
+	q := url.Values{}
+	if ns := app.AppNamespace(); ns != "" {
+		q.Set("appNamespace", ns)
+	}
+	if p := app.Spec.Project; p != "" {
+		q.Set("project", p)
+	}
+	var out AppSyncWindows
+	p := "/api/v1/applications/" + url.PathEscape(app.Name()) + "/syncwindows"
+	if err := c.do(ctx, http.MethodGet, p, q, nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// ProjectSyncWindows fetches every window defined on a project, including those
+// that do not apply to any particular application.
+func (c *Client) ProjectSyncWindows(ctx context.Context, project string) ([]SyncWindow, error) {
+	var out struct {
+		Windows []SyncWindow `json:"windows"`
+	}
+	p := "/api/v1/projects/" + url.PathEscape(project) + "/syncwindows"
+	if err := c.do(ctx, http.MethodGet, p, nil, nil, &out); err != nil {
+		return nil, err
+	}
+	return out.Windows, nil
+}

@@ -228,6 +228,30 @@ Prefixes and values are case-insensitive, so `kind:statefulset` works.
 - **terminate** (DETAILS) stops a running sync, and says that the application is
   left partially applied.
 
+## Sync windows
+
+`w` from anywhere inside an application lists the schedules that allow or block
+syncing — the maintenance windows defined on its AppProject.
+
+```
+   KIND   SCHEDULE          DURATION  ZONE            APPLIES TO
+▸⟳ allow  1 15 * * *        5h        Asia/Seoul      web-prod*
+   deny   3 0 * * *         24h       Asia/Seoul      other-prod*  (does not apply)
+```
+
+Windows that govern the focused application lead; the rest of the project's are
+shown below, dimmed and labelled — a window whose selector *nearly* matched is
+the usual answer to "why is this not blocked". An open window is marked, and the
+verdict on whether a sync can run right now comes from the server rather than
+being recomputed, because the precedence between allow and deny windows is the
+server's to define.
+
+A blocked sync is flagged in the status line on **every** tab, and summarized in
+DETAILS beside the sync policy — pressing `s` and being rejected is a worse way
+to find out. Windows are read-only here: they are defined per project, so a
+change reaches every application in it at once, which belongs in the repository
+that owns the project.
+
 Spec changes go out as **merge patches**, not a whole-spec PUT: a PUT would
 replace the spec with what argx modeled and silently drop every field it does
 not know about — `ignoreDifferences`, `info`, `revisionHistoryLimit`,

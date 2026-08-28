@@ -168,6 +168,7 @@ func (m *Model) helpLines() []string {
 		{"application view", []row{
 			{"[ / ]  tab", "previous / next tab"},
 			{"1 / 2 / 3", "RESOURCES / HISTORY / DETAILS"},
+			{"w", "sync windows"},
 			{"o", "open the application in browser"},
 			{"r", "reload"},
 			{"esc, h, q", "back to the list"},
@@ -191,10 +192,15 @@ func (m *Model) helpLines() []string {
 			{"d", "diff against live"},
 		}},
 		{"DETAILS tab", []row{
-			{"enter", "change the * row under the cursor"},
+			{"enter", "change the marked row under the cursor"},
 			{"", "revision, auto-sync, prune, self-heal, terminate"},
 			{"s", "sync"},
 			{"e", "events"},
+		}},
+		{"sync windows", []row{
+			{"w", "the schedules that allow or block syncing"},
+			{"", "defined per AppProject; argx shows them, does not edit them"},
+			{"", "a blocked sync is flagged in the status line on every tab"},
 		}},
 		{"status letters", []row{
 			{"S / !", "Synced / OutOfSync"},
@@ -270,6 +276,11 @@ func (m *Model) renderStatus() string {
 			parts = append(parts,
 				m.st.syncStyle(a.Status.Sync.Status).Render(a.Status.Sync.Status),
 				m.st.healthStyle(a.Status.Health.Status).Render(a.Status.Health.Status))
+			// A blocked sync is worth carrying on every tab: pressing `s` and
+			// getting a rejection is a worse way to find out.
+			if m.windows != nil && !m.windows.CanSync {
+				parts = append(parts, m.st.err.Render("sync window: BLOCKED"))
+			}
 			if on, prune, selfHeal := a.AutoSync(); on {
 				s := "auto"
 				if prune {
@@ -287,6 +298,27 @@ func (m *Model) renderStatus() string {
 				parts = append(parts, m.st.dim.Render(resourceFilterHint))
 			}
 		}
+	case screenWindows:
+		rows := m.windowRows()
+		applies := 0
+		for _, r := range rows {
+			if r.applies {
+				applies++
+			}
+		}
+		parts = append(parts, m.st.dim.Render(
+			fmt.Sprintf("%d windows · %d apply here", len(rows), applies)))
+		if m.windows != nil {
+			if m.windows.CanSync {
+				parts = append(parts, m.st.success.Render("syncing allowed now"))
+			} else {
+				parts = append(parts, m.st.err.Render("syncing BLOCKED now"))
+			}
+		}
+		if m.app != nil {
+			parts = append(parts, m.st.dim.Render(m.app.Name()))
+		}
+
 	default:
 		total := len(m.pagerLines())
 		parts = append(parts, m.st.dim.Render(fmt.Sprintf("line %d/%d", min(m.pagerTop+1, total), total)))
@@ -326,12 +358,14 @@ func (m *Model) renderFooter() string {
 	case screenApp:
 		switch m.tab {
 		case tabHistory:
-			hints = []string{"enter rollback", "[ ] tabs", "d diff", "o browser", "esc back", "? help"}
+			hints = []string{"enter rollback", "[ ] tabs", "d diff", "w windows", "o browser", "esc back"}
 		case tabDetails:
-			hints = []string{"enter edit", "[ ] tabs", "s sync", "e events", "o browser", "esc back", "? help"}
+			hints = []string{"enter edit", "[ ] tabs", "s sync", "w windows", "e events", "o browser", "esc back"}
 		default:
-			hints = []string{"space mark", "[ ] tabs", "enter manifest", "d diff", "l logs", "s sync", "o browser", "esc back"}
+			hints = []string{"space mark", "[ ] tabs", "enter manifest", "d diff", "l logs", "s sync", "w windows", "esc back"}
 		}
+	case screenWindows:
+		hints = []string{"j/k move", "r reload", "esc back", "? help"}
 	case screenHelp:
 		hints = []string{"esc back"}
 	default:
