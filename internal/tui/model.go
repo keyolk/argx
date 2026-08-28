@@ -188,6 +188,10 @@ type Model struct {
 	pagerTop   int
 	pagerTitle string
 	pagerFilt  string
+	// showNoise reveals the bookkeeping fields a manifest carries — see
+	// noiseKeys. Off by default: they are 39% of a real pod manifest and bury
+	// everything else.
+	showNoise bool
 
 	// ---- filter input ----
 	filtering bool

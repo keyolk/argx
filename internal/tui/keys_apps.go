@@ -190,6 +190,26 @@ func (m *Model) handleTreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handlePagerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Stepping between matches rather than through the context around them is
+	// what makes a search over a long manifest usable.
+	switch msg.String() {
+	case "n":
+		return m, m.jumpToHit(1)
+	case "N":
+		return m, m.jumpToHit(-1)
+	case "M":
+		// The bookkeeping fields, back on. They are hidden by default because
+		// they bury everything else, not because they never matter.
+		m.showNoise = !m.showNoise
+		m.pagerTop = 0
+		if m.showNoise {
+			m.setToast("showing managedFields and other bookkeeping")
+		} else {
+			m.setToast("hiding managedFields and other bookkeeping")
+		}
+		return m, nil
+	}
+
 	maxTop := len(m.pagerLines()) - m.bodyHeight()
 	if maxTop < 0 {
 		maxTop = 0
@@ -218,4 +238,49 @@ func (m *Model) handlePagerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pagerTop = 0
 	}
 	return m, nil
+}
+
+// jumpToHit moves the viewport to the next or previous match.
+//
+// The match is placed a couple of lines down rather than at the very top, so
+// the context above it — which is half the reason it is shown — stays visible.
+func (m *Model) jumpToHit(d int) tea.Cmd {
+	rows := m.pagerHitRows()
+	if len(rows) == 0 {
+		return nil
+	}
+
+	// Which match the viewport is currently showing.
+	cur := -1
+	for i, r := range rows {
+		if r >= m.pagerTop {
+			cur = i
+			break
+		}
+	}
+	switch {
+	case cur < 0:
+		cur = len(rows) - 1
+	case d > 0 && rows[cur] > m.pagerTop:
+		// The next match is already below the top of the screen, so stepping
+		// forward means going to it rather than past it.
+		d = 0
+	}
+
+	next := cur + d
+	if next < 0 {
+		next = len(rows) - 1
+	}
+	if next >= len(rows) {
+		next = 0
+	}
+
+	m.pagerTop = rows[next] - 2
+	if m.pagerTop < 0 {
+		m.pagerTop = 0
+	}
+	if max := len(m.pagerLines()) - m.bodyHeight(); m.pagerTop > max && max > 0 {
+		m.pagerTop = max
+	}
+	return nil
 }

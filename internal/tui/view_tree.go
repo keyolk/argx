@@ -194,6 +194,13 @@ func (m *Model) helpLines() []string {
 			{"health:degraded", "health status"},
 			{"tab", "complete the word under the cursor"},
 		}},
+		{"manifests and diffs", []row{
+			{"/", "search — each match is labelled with its JSON path"},
+			{"", "and shown with the lines around it"},
+			{"n / N", "next / previous match"},
+			{"M", "show managedFields and other bookkeeping"},
+			{"", "hidden by default: 39% of a real pod manifest"},
+		}},
 		{"resource filter", []row{
 			{"web", "name contains web"},
 			{"kind:pod, k:pod", "kind starts with pod"},

@@ -180,6 +180,8 @@ and bottom, `/` filter, `?` help, `Esc` back, `q` quit at the list.
 | `e` | events | — | — | events |
 | `l` `L` | — | pod logs | — | — |
 | `e` | — | a shell in the container | — | — |
+| `n` `N` | next / previous match in a manifest or diff |||
+| `M` | show managedFields and other bookkeeping |||
 | `r` `R` | refresh / hard refresh | reload | ← | ← |
 | `s` | sync | sync the marked resources | — | sync |
 | `b` | — | — | roll back | — |
@@ -336,6 +338,35 @@ remember the original revision for you — the picker lists what the repo has, s
 `o` opens the Argo CD web UI for the marked applications. The opener is
 `$ARGX_BROWSER`, then `$BROWSER`, then `open` (macOS) or `xdg-open`. Past five
 tabs it asks first — a stray `a` before `o` would otherwise open a hundred.
+
+## Searching a manifest or a diff
+
+`/` in a manifest or diff is not a grep. A line reading `"image": "nginx:1.25"`
+says nothing about *which* container it belongs to, and the lines that would
+have said are exactly what a grep removes. Each match is labelled with the JSON
+path that reaches it and shown with the lines around it:
+
+```
+spec.containers[0].image
+      "name": "fluent-bit",
+      "image": "registry/fluent-bit:3.2.3",
+      "imagePullPolicy": "IfNotPresent",
+⋯
+spec.containers[1].image
+      "name": "app",
+      "image": "registry/app:1.0.15",
+```
+
+`n` and `N` step between matches rather than through the context around them.
+Overlapping context windows are merged, so no line is printed twice under a
+label describing a different match.
+
+**managedFields is hidden by default**, along with the annotation `kubectl
+apply` writes. Measured on a real pod manifest, those are 39% of the document —
+enough to bury every real match. `M` shows them, and the status line says how
+many lines are hidden, so an absent field is never a mystery. The filter applies
+to manifests and diffs only: a log line beginning with `managedFields` is
+content, not a field.
 
 ## Diff
 

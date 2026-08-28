@@ -146,8 +146,19 @@ func (m *Model) renderStatus() string {
 		}
 
 	default:
-		total := len(m.pagerLines())
+		res := m.searchPager()
+		total := len(res.lines)
+		if n := len(res.hitRows); n > 0 {
+			// The match count is what says whether the search found anything;
+			// a line count of a filtered view says almost nothing.
+			parts = append(parts, m.st.dim.Render(fmt.Sprintf("%d match(es)", n)))
+		}
 		parts = append(parts, m.st.dim.Render(fmt.Sprintf("line %d/%d", min(m.pagerTop+1, total), total)))
+		if n := m.noiseHidden(); n > 0 {
+			// An absent field should never be a mystery: the count says how
+			// much is hidden, and M is how to see it.
+			parts = append(parts, m.st.dim.Render(fmt.Sprintf("%d lines hidden (M)", n)))
+		}
 		if m.pagerFilt != "" || m.filtering {
 			parts = append(parts, m.renderFilter(m.pagerFilt))
 		}

@@ -4,8 +4,6 @@ package tui
 // handlers in update.go manipulate, kept apart from the dispatch itself.
 
 import (
-	"strings"
-
 	"github.com/keyolk/argx/internal/argocd"
 )
 
@@ -152,28 +150,6 @@ func (m *Model) applyTreeFilter() {
 		}
 	}
 	m.clampScroll()
-}
-
-// pagerLines is the pager content after its filter, which acts as a grep.
-//
-// Help is included so its scroll bound and line count come from the same place
-// as every other pager view rather than a second, drifting copy.
-func (m *Model) pagerLines() []string {
-	src := m.pager
-	if m.screen == screenHelp {
-		src = m.helpLines()
-	}
-	if m.pagerFilt == "" {
-		return src
-	}
-	q := strings.ToLower(m.pagerFilt)
-	out := make([]string, 0, len(src))
-	for _, l := range src {
-		if strings.Contains(strings.ToLower(l), q) {
-			out = append(out, l)
-		}
-	}
-	return out
 }
 
 // ---- mark bookkeeping ----
