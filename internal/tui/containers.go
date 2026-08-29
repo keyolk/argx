@@ -87,7 +87,7 @@ func (m *Model) chooseContainer() (tea.Model, tea.Cmd) {
 func (m *Model) handleContainerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	p := &m.picker
 	switch msg.String() {
-	case "esc", "q":
+	case "esc":
 		m.overlay = overlayNone
 	case "j", "down", "ctrl+n":
 		p.cur++

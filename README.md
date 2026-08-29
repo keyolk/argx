@@ -168,7 +168,12 @@ mark of the one it replaced.
 ## Keys
 
 Everywhere: `j` `k` `↑` `↓` move, `ctrl+d` / `ctrl+u` half page, `g` / `G` top
-and bottom, `/` filter, `?` help, `Esc` back, `q` quit at the list.
+and bottom, `/` filter, `?` help.
+
+**`q` and `ctrl+c` quit, from anywhere. `Esc` goes back one screen** — it is the
+only key that unwinds, and it never quits. `ctrl+c` works even inside a modal or
+mid-search, since it is the terminal's own interrupt; `q` is an ordinary letter,
+so it stays typeable while the filter prompt is open.
 
 | key | applications | RESOURCES | HISTORY | DETAILS |
 |---|---|---|---|---|
@@ -192,8 +197,9 @@ and bottom, `/` filter, `?` help, `Esc` back, `q` quit at the list.
 | `S` | application sets | — | — | — |
 | `w` | — | sync windows | ← | ← |
 
-In the diff, manifest, and log views `/` acts as a grep. `Esc` clears a filter,
-`Enter` keeps it.
+In the log view `/` acts as a grep; in a manifest or diff it does more — see
+[Searching a manifest or a diff](#searching-a-manifest-or-a-diff). `Esc` clears
+a filter, `Enter` keeps it.
 
 ### Resource filter
 

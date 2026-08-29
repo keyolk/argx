@@ -146,7 +146,8 @@ func (m *Model) helpLines() []string {
 			{"ctrl+d / ctrl+u", "half page"},
 			{"g / G", "top / bottom"},
 			{"enter, l", "drill in"},
-			{"esc, h, q", "back (q quits at the app list)"},
+			{"esc, h", "back one screen"},
+			{"q, ctrl+c", "quit, from anywhere"},
 			{"/", "filter (esc clears, enter keeps)"},
 			{"←/→ in a filter", "move the text cursor; ↑/↓ move the list"},
 			{"ctrl+a/e ctrl+w", "start / end of line, delete a word"},
@@ -173,7 +174,7 @@ func (m *Model) helpLines() []string {
 			{"w", "sync windows"},
 			{"o", "open the application in browser"},
 			{"r", "reload"},
-			{"esc, h, q", "back to the list"},
+			{"esc, h", "back to the list"},
 		}},
 		{"RESOURCES tab", []row{
 			{"enter", "live manifest"},

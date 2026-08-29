@@ -280,7 +280,7 @@ func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				m.loading = true
 				return m, cmd
 			}
-		case "n", "N", "esc", "q":
+		case "n", "N", "esc":
 			m.overlay = overlayNone
 			m.confirm = confirmState{}
 		}
@@ -298,7 +298,7 @@ func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.syncOpts.prune = !m.syncOpts.prune
 		case "d":
 			m.syncOpts.dryRun = !m.syncOpts.dryRun
-		case "esc", "q", "n":
+		case "esc", "n":
 			m.overlay = overlayNone
 		case "enter", "y":
 			m.overlay = overlayNone

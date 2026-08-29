@@ -241,20 +241,20 @@ func (m *Model) renderFooter() string {
 	case screenApp:
 		switch m.tab {
 		case tabHistory:
-			hints = []string{"enter rollback", "[ ] tabs", "d diff", "w windows", "o browser", "esc back"}
+			hints = []string{"enter rollback", "[ ] tabs", "d diff", "w windows", "o browser", "esc back", "q quit"}
 		case tabDetails:
-			hints = []string{"enter edit", "[ ] tabs", "s sync", "w windows", "e events", "o browser", "esc back"}
+			hints = []string{"enter edit", "[ ] tabs", "s sync", "w windows", "e events", "esc back", "q quit"}
 		default:
-			hints = []string{"space mark", "enter manifest", "d diff", "l logs", "e shell", "s sync", "w windows", "esc back"}
+			hints = []string{"space mark", "enter manifest", "d diff", "l logs", "e shell", "s sync", "w windows", "esc back", "q quit"}
 		}
 	case screenAppSets:
-		hints = []string{"enter apps", "y spec", "o browser", "S applications", "/ filter", "r reload", "? help"}
+		hints = []string{"enter apps", "y spec", "o browser", "S applications", "/ filter", "? help", "q quit"}
 	case screenWindows:
-		hints = []string{"j/k move", "o project", "O app", "r reload", "esc back", "? help"}
+		hints = []string{"j/k move", "o project", "O app", "r reload", "esc back", "q quit"}
 	case screenHelp:
-		hints = []string{"esc back"}
+		hints = []string{"esc back", "q quit"}
 	default:
-		hints = []string{"j/k scroll", "/ grep", "esc back", "? help"}
+		hints = []string{"j/k scroll", "/ search", "n/N match", "M noise", "esc back", "q quit"}
 	}
 
 	// Drop hints from the right until the line fits, so a narrow terminal keeps

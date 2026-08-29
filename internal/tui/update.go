@@ -175,6 +175,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, tea.Batch(m.loadAppsCmd(), tickCmd())
 
 	case tea.KeyMsg:
+		// ctrl+c is the terminal's interrupt and quits from anywhere: inside a
+		// modal, mid-search, during a confirmation. Routing it through the
+		// normal key path would let an overlay or the filter prompt swallow it,
+		// and a program you cannot interrupt is one people kill from another
+		// window.
+		if msg.Type == tea.KeyCtrlC {
+			return m, tea.Quit
+		}
 		return m.handleKey(msg)
 	}
 	return m, nil
@@ -206,11 +214,15 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.String() {
 	case "q":
-		if m.screen == screenApps {
-			return m, tea.Quit
-		}
-		m.pop()
-		return m, nil
+		// Quit outright, from wherever the reader is. q meaning "back" on some
+		// screens and "quit" on one made the same key do two things depending
+		// on where you were, which is the kind of thing you find out by
+		// pressing it. Esc is the key that unwinds a screen.
+		//
+		// Reached only when no overlay is open and the filter prompt is closed,
+		// since q is an ordinary letter and a search that cannot contain it
+		// would be broken.
+		return m, tea.Quit
 	case "S":
 		// The two lists are peers, not a stack: S toggles between them from
 		// either side, so getting back is the same key that got you there.

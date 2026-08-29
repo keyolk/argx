@@ -193,18 +193,123 @@ func TestTreeMarksKeyOnUID(t *testing.T) {
 
 // ---- navigation ----
 
-func TestQuitOnlyAtRoot(t *testing.T) {
+// q quits from anywhere. Meaning "back" on some screens and "quit" on one made
+// the same key do two things depending on where you were.
+func TestQuitFromAnyScreen(t *testing.T) {
+	for _, screen := range []screen{
+		screenApps, screenAppSets, screenApp, screenWindows,
+		screenDiff, screenManifest, screenLogs, screenEvents, screenHelp,
+	} {
+		m := newTestModel(t, "alpha")
+		m.screen = screen
+
+		_, cmd := m.Update(key("q"))
+		if cmd == nil {
+			t.Errorf("q on screen %v did not quit", screen)
+			continue
+		}
+		if msg := cmd(); msg == nil {
+			t.Errorf("q on screen %v produced no quit message", screen)
+		}
+		// The screen must not have changed on the way out: q is not a back key.
+		if m.screen != screen {
+			t.Errorf("q on screen %v changed it to %v", screen, m.screen)
+		}
+	}
+}
+
+// ctrl+c is the terminal's interrupt and must work from anywhere — inside a
+// modal, mid-search, during a confirmation. A program that swallows it in some
+// states is one people learn to kill from another window.
+func TestInterruptQuitsFromAnyState(t *testing.T) {
+	states := []struct {
+		name  string
+		setup func(*Model)
+	}{
+		{"plain list", func(m *Model) {}},
+		{"filtering", func(m *Model) { m.filtering = true }},
+		{"error modal", func(m *Model) { m.showError(errString("boom")) }},
+		{"confirmation", func(m *Model) {
+			m.overlay = overlayConfirm
+			m.confirm = confirmState{title: "Sync?"}
+		}},
+		{"sync options", func(m *Model) { m.overlay = overlaySyncOpts }},
+		{"revision picker", func(m *Model) { m.overlay = overlayRevPicker }},
+		{"container picker", func(m *Model) { m.overlay = overlayContainer }},
+	}
+	for _, st := range states {
+		m := newTestModel(t, "alpha")
+		st.setup(m)
+
+		_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyCtrlC})
+		if cmd == nil {
+			t.Errorf("ctrl+c during %s did not quit", st.name)
+			continue
+		}
+		if msg := cmd(); msg == nil {
+			t.Errorf("ctrl+c during %s produced no quit message", st.name)
+		}
+	}
+}
+
+// q is an ordinary letter, so it must stay typeable: a search that cannot
+// contain the letter q is broken.
+func TestQIsTypeableInAFilter(t *testing.T) {
+	m := newTestModel(t, "alpha")
+	press(t, m, "/", "q", "u", "e")
+
+	if got := m.appFilter.String(); got != "que" {
+		t.Errorf("filter = %q, want the letters typed", got)
+	}
+	if !m.filtering {
+		t.Error("q closed the filter prompt instead of being typed into it")
+	}
+}
+
+// Esc is the key that unwinds a screen, and the only one.
+func TestEscapeIsTheBackKey(t *testing.T) {
 	m := newTestModel(t, "alpha")
 	m.push(screenApp)
+	m.push(screenDiff)
 
-	press(t, m, "q")
-	if m.screen != screenApps {
-		t.Fatalf("q inside a drill-down should go back, screen = %v", m.screen)
+	press(t, m, "esc")
+	if m.screen != screenApp {
+		t.Errorf("esc should pop to the application view, got %v", m.screen)
 	}
+	press(t, m, "esc")
+	if m.screen != screenApps {
+		t.Errorf("esc should pop to the application list, got %v", m.screen)
+	}
+	// At the root there is nothing to pop, and esc must not quit.
+	_, cmd := m.Update(key("esc"))
+	if cmd != nil {
+		t.Error("esc at the root should do nothing, not quit")
+	}
+	if m.screen != screenApps {
+		t.Errorf("esc at the root changed the screen to %v", m.screen)
+	}
+}
 
-	_, cmd := m.Update(key("q"))
-	if cmd == nil {
-		t.Fatal("q at the application list should quit")
+// Esc closes a modal without quitting, and without acting on it.
+func TestEscapeClosesModals(t *testing.T) {
+	for _, ov := range []overlay{
+		overlayConfirm, overlaySyncOpts, overlayRevPicker, overlayContainer, overlayError,
+	} {
+		m := newTestModel(t, "alpha")
+		m.overlay = ov
+		if ov == overlayConfirm {
+			m.confirm = confirmState{title: "Sync?"}
+		}
+
+		_, cmd := m.Update(key("esc"))
+		if m.overlay != overlayNone {
+			t.Errorf("esc did not close overlay %v", ov)
+		}
+		if cmd != nil {
+			if msg := cmd(); msg != nil {
+				t.Errorf("esc on overlay %v issued a command", ov)
+			}
+		}
 	}
 }
 
@@ -422,4 +527,49 @@ func names(apps []argocd.Application) []string {
 		out[i] = apps[i].Name()
 	}
 	return out
+}
+
+// A footer that promises a key the screen does not have is worse than no
+// footer. Every screen offers the two keys that always work.
+func TestFooterOffersQuitAndBack(t *testing.T) {
+	for _, tc := range []struct {
+		screen   screen
+		wantBack bool
+	}{
+		{screenApps, false}, // nothing to go back to
+		{screenAppSets, false},
+		{screenApp, true},
+		{screenWindows, true},
+		{screenDiff, true},
+		{screenLogs, true},
+		{screenHelp, true},
+	} {
+		m := newTestModel(t, "alpha")
+		m.screen = tc.screen
+		foot := m.renderFooter()
+
+		if !strings.Contains(foot, "q quit") {
+			t.Errorf("screen %v does not offer quit: %q", tc.screen, foot)
+		}
+		if tc.wantBack && !strings.Contains(foot, "esc back") {
+			t.Errorf("screen %v does not offer back: %q", tc.screen, foot)
+		}
+	}
+}
+
+// The help screen documents the keys, so it must document these two correctly —
+// it described the old rule ("q quits at the app list") for a while.
+func TestHelpDocumentsQuitAndBack(t *testing.T) {
+	m := newTestModel(t, "alpha")
+	flat := strings.Join(m.helpLines(), "\n")
+
+	if !strings.Contains(flat, "q, ctrl+c") {
+		t.Errorf("help does not document the quit keys:\n%s", flat)
+	}
+	if strings.Contains(flat, "q quits at the app list") {
+		t.Errorf("help still describes the old rule:\n%s", flat)
+	}
+	if !strings.Contains(flat, "back one screen") {
+		t.Errorf("help does not document esc as the back key:\n%s", flat)
+	}
 }
