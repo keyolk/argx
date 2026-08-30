@@ -54,6 +54,9 @@ const (
 	screenWindows
 	// screenSchedule lists the syncs waiting for their window to open.
 	screenSchedule
+	// screenContexts lists the servers this session is connected to and the
+	// credential each one is using.
+	screenContexts
 	screenHelp
 )
 
@@ -195,6 +198,16 @@ type Model struct {
 	// noiseKeys. Off by default: they are 39% of a real pod manifest and bury
 	// everything else.
 	showNoise bool
+
+	// ---- contexts ----
+	//
+	// Who argx is on each server. Loaded on entering the view rather than at
+	// startup: it is two requests per server, and most sessions never ask.
+	ctxRows   []contextRow
+	ctxCur    int
+	ctxTop    int
+	ctxLoaded bool
+	ctxDetail bool
 
 	// ---- scheduled syncs ----
 	//

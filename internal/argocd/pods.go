@@ -226,3 +226,40 @@ func (c *Client) ProjectSyncWindows(ctx context.Context, project string) ([]Sync
 	}
 	return out.Spec.SyncWindows, nil
 }
+
+// UserInfo is who the server thinks argx is.
+type UserInfo struct {
+	LoggedIn bool     `json:"loggedIn"`
+	Username string   `json:"username"`
+	Iss      string   `json:"iss"`
+	Groups   []string `json:"groups"`
+}
+
+// WhoAmI asks the server who this token authenticates as.
+func (c *Client) WhoAmI(ctx context.Context) (*UserInfo, error) {
+	var out UserInfo
+	if err := c.do(ctx, http.MethodGet, "/api/v1/session/userinfo", nil, nil, &out); err != nil {
+		return nil, err
+	}
+	return &out, nil
+}
+
+// CanI asks whether this token may perform an action.
+//
+// The server answers from its own RBAC, which is the only authority on it:
+// reading the policy and evaluating it here would be a second, divergent
+// answer to a question the server already answers.
+func (c *Client) CanI(ctx context.Context, resource, action, subresource string) (bool, error) {
+	if subresource == "" {
+		subresource = "*/*"
+	}
+	var out struct {
+		Value string `json:"value"`
+	}
+	p := "/api/v1/account/can-i/" + url.PathEscape(resource) + "/" +
+		url.PathEscape(action) + "/" + subresource
+	if err := c.do(ctx, http.MethodGet, p, nil, nil, &out); err != nil {
+		return false, err
+	}
+	return out.Value == "yes", nil
+}

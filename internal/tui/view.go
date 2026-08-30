@@ -25,6 +25,8 @@ func (m *Model) View() string {
 		body = m.renderWindows()
 	case screenSchedule:
 		body = m.renderSchedule()
+	case screenContexts:
+		body = m.renderContexts()
 	case screenHelp:
 		body = m.renderHelp()
 	default:
@@ -83,6 +85,13 @@ func (m *Model) renderHeader() string {
 			m.st.accent.Render(name)
 	case screenSchedule:
 		left = m.st.title.Render("argx") + m.st.dim.Render(" · scheduled syncs")
+	case screenContexts:
+		left = m.st.title.Render("argx") + m.st.dim.Render(" · contexts")
+		if m.ctxDetail {
+			if r := m.currentContext(); r != nil {
+				left += m.st.dim.Render(" · ") + m.ctxStyle(r.name).Render(r.name)
+			}
+		}
 	case screenHelp:
 		left = m.st.title.Render("argx") + m.st.dim.Render(" · help")
 	default:

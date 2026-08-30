@@ -122,6 +122,9 @@ func (m *Model) renderStatus() string {
 				parts = append(parts, m.st.dim.Render(resourceFilterHint))
 			}
 		}
+	case screenContexts:
+		parts = append(parts, m.contextsSummary()...)
+
 	case screenSchedule:
 		waiting, syncing, done, declined, failed := 0, 0, 0, 0, 0
 		for _, sc := range m.schedules {
@@ -288,7 +291,7 @@ func (m *Model) renderFooter() string {
 	var hints []string
 	switch m.screen {
 	case screenApps:
-		hints = []string{"space mark", "o browser", "d diff", "s sync", "S appsets", "/ filter", "? help", "q quit"}
+		hints = []string{"space mark", "o browser", "d diff", "s sync", "S appsets", "C contexts", "/ filter", "? help", "q quit"}
 	case screenApp:
 		switch m.tab {
 		case tabHistory:
@@ -306,6 +309,12 @@ func (m *Model) renderFooter() string {
 		hints = []string{"j/k move", "s+w schedule a sync", "o project", "O app", "r reload", "esc back", "q quit"}
 	case screenSchedule:
 		hints = []string{"j/k move", "x cancel", "c clear finished", "o browser", "esc back", "q quit"}
+	case screenContexts:
+		if m.ctxDetail {
+			hints = []string{"j/k scroll", "o browser", "esc back to the list", "q quit"}
+		} else {
+			hints = []string{"j/k move", "enter details", "o browser", "r reload", "esc back", "q quit"}
+		}
 	case screenHelp:
 		hints = []string{"esc back", "q quit"}
 	default:

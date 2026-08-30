@@ -121,6 +121,14 @@ type glyphSet struct {
 	clock     string
 	person    string
 
+	// ---- permission answers ----
+	//
+	// Used where the answer is the content of the line rather than a column
+	// marker, so all three sets carry one: the context view's permission list
+	// reads as a checklist and a blank cell there means nothing at all.
+	yes string
+	no  string
+
 	// ---- tabs ----
 	//
 	// Empty outside the Nerd Font set: the tab label already carries the number
@@ -174,6 +182,9 @@ func unicodeGlyphs() glyphSet {
 		suspended:   "Z",
 		unknown:     "?",
 
+		yes: "\u2713", // check
+		no:  "\u2717", // ballot X
+
 		kindDefault: "",
 	}
 }
@@ -201,6 +212,9 @@ func asciiGlyphs() glyphSet {
 		missing:     "M",
 		suspended:   "Z",
 		unknown:     "?",
+
+		yes: "y",
+		no:  "n",
 
 		kindDefault: "",
 	}
@@ -247,6 +261,9 @@ func nerdGlyphs() glyphSet {
 		server:    "\U000f015e", // nf-md-cloud_outline
 		clock:     "\U000f0954", // nf-md-clock_fast
 		person:    "\U000f0004", // nf-md-account
+
+		yes: "\U000f012c", // nf-md-check
+		no:  "\U000f0156", // nf-md-close
 
 		tabResources: "\U000f0a30", // nf-md-cube_outline
 		tabHistory:   "\U000f02da", // nf-md-history
