@@ -52,6 +52,8 @@ const (
 	// screenWindows lists the sync windows governing the focused application's
 	// project — when a sync is allowed to run, and when it is blocked.
 	screenWindows
+	// screenSchedule lists the syncs waiting for their window to open.
+	screenSchedule
 	screenHelp
 )
 
@@ -172,9 +174,10 @@ type Model struct {
 	// windows is the sync-window state for the focused application, fetched
 	// lazily: most sessions never look at it, and it is one request per app.
 	windows *argocd.AppSyncWindows
-	// projectWindows is every window on the project, including those that do
-	// not apply to this application. Seeing only the applicable ones makes a
-	// window that *nearly* matched impossible to notice.
+	// projectWindows is every window on the project, read from its spec —
+	// including those that do not apply to this application, so a window that
+	// *nearly* matched is still noticeable, and including closed ones, which
+	// /projects/{name}/syncwindows omits entirely.
 	projectWindows []argocd.SyncWindow
 	windowCur      int
 	windowTop      int
@@ -192,6 +195,15 @@ type Model struct {
 	// noiseKeys. Off by default: they are 39% of a real pod manifest and bury
 	// everything else.
 	showNoise bool
+
+	// ---- scheduled syncs ----
+	//
+	// These live only as long as the session: there is no daemon and no state
+	// file, and the exit path says what will be dropped.
+	schedules   []scheduled
+	scheduleID  int
+	scheduleCur int
+	scheduleTop int
 
 	// ---- filter input ----
 	filtering bool
@@ -237,9 +249,14 @@ type confirmState struct {
 
 // syncOptState is the sync modal's toggles.
 type syncOptState struct {
-	prune   bool
-	dryRun  bool
-	targets []argocd.Application
+	prune  bool
+	dryRun bool
+	// schedule waits for the sync window to open instead of syncing now. Argo
+	// CD records a rejected sync as a failed operation on the application, so
+	// syncing into a closed window leaves noise where someone will later look
+	// for a real fault.
+	schedule bool
+	targets  []argocd.Application
 }
 
 // revPickerState is the revision picker's list and its own filter.

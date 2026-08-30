@@ -33,6 +33,12 @@ func (m *Model) renderStatus() string {
 		if n := len(m.appMarks); n > 0 {
 			parts = append(parts, m.st.mark.Render(fmt.Sprintf("%d marked", n)))
 		}
+		if n := m.pendingSchedules(); n > 0 {
+			// Carried on the root screen because a scheduled sync is invisible
+			// otherwise, and it disappears when argx exits — the reader needs a
+			// standing reminder that something is waiting on this process.
+			parts = append(parts, m.st.warn.Render(fmt.Sprintf("%d scheduled (W)", n)))
+		}
 		if !m.appFilter.empty() || m.filtering {
 			parts = append(parts, m.renderFilter(m.appFilter.String()))
 			if m.filtering {
@@ -116,6 +122,34 @@ func (m *Model) renderStatus() string {
 				parts = append(parts, m.st.dim.Render(resourceFilterHint))
 			}
 		}
+	case screenSchedule:
+		waiting, done, declined, failed := 0, 0, 0, 0
+		for _, sc := range m.schedules {
+			switch sc.state {
+			case scheduleDone:
+				done++
+			case scheduleFailed:
+				failed++
+			case scheduleCancelled:
+				declined++
+			default:
+				waiting++
+			}
+		}
+		parts = append(parts, m.st.dim.Render(fmt.Sprintf("%d waiting", waiting)))
+		if done > 0 {
+			parts = append(parts, m.st.success.Render(fmt.Sprintf("%d synced", done)))
+		}
+		if declined > 0 {
+			// "declined" rather than "cancelled": most of these are argx
+			// refusing to deploy something that changed, not the user changing
+			// their mind, and the reason line says which.
+			parts = append(parts, m.st.warn.Render(fmt.Sprintf("%d declined", declined)))
+		}
+		if failed > 0 {
+			parts = append(parts, m.st.err.Render(fmt.Sprintf("%d failed", failed)))
+		}
+
 	case screenWindows:
 		rows := m.windowRows()
 		open := 0
@@ -251,6 +285,8 @@ func (m *Model) renderFooter() string {
 		hints = []string{"enter apps", "y spec", "o browser", "S applications", "/ filter", "? help", "q quit"}
 	case screenWindows:
 		hints = []string{"j/k move", "o project", "O app", "r reload", "esc back", "q quit"}
+	case screenSchedule:
+		hints = []string{"j/k move", "x cancel", "c clear finished", "o browser", "esc back", "q quit"}
 	case screenHelp:
 		hints = []string{"esc back", "q quit"}
 	default:
@@ -314,8 +350,18 @@ func (m *Model) renderOverlay(frame string) string {
 				m.st.dim.Render("(delete resources not in git)"),
 			check(m.syncOpts.dryRun) + " " + m.st.info.Render("d") + " dry-run  " +
 				m.st.dim.Render("(compute only, apply nothing)"),
+			check(m.syncOpts.schedule) + " " + m.st.info.Render("w") + " wait for the sync window  " +
+				m.st.dim.Render("(while argx runs)"),
 			"",
 			m.st.dim.Render("enter continue   ·   esc cancel"),
+		}
+		if m.syncBlocked() && !m.syncOpts.schedule {
+			// Syncing now would be rejected and recorded as a failed operation.
+			// Saying so here is the only place it changes the decision.
+			lines = append(lines[:len(lines)-2],
+				m.st.err.Render("A sync window is blocking this — syncing now will be refused."),
+				"",
+				m.st.dim.Render("enter continue   ·   esc cancel"))
 		}
 		box = m.st.modal.Render(strings.Join(
 			clampModalBody(lines, m.modalContentWidth(64), m.modalContentHeight()), "\n"))

@@ -197,6 +197,7 @@ so it stays typeable while the filter prompt is open.
 | `E` | show unreachable servers | — | — | — |
 | `S` | application sets | — | — | — |
 | `w` | — | sync windows | ← | ← |
+| `W` | scheduled syncs | ← | ← | ← |
 
 In the log view `/` acts as a grep; in a manifest or diff it does more — see
 [Searching a manifest or a diff](#searching-a-manifest-or-a-diff). `Esc` clears
@@ -226,8 +227,9 @@ looks like.
 
 - **refresh** (`r`) and **hard refresh** (`R`) only re-read the source and
   recompute status, so they run without a prompt.
-- **sync** (`s`) opens an options modal (`p` prune, `d` dry-run) and then a
-  confirmation listing exactly what will be synced.
+- **sync** (`s`) opens an options modal (`p` prune, `d` dry-run, `w` wait for
+  the sync window) and then a confirmation listing exactly what will be synced.
+  See [Scheduled syncs](#scheduled-syncs) for what `w` does.
 - **target revision** — `Enter` on the DETAILS row opens a picker of the
   repository's actual branches and tags, each labelled with its kind, filtered
   as you type. The confirmation shows the old and new revision, and warns when
@@ -310,18 +312,83 @@ server's to define.
 `o` opens the project's **windows tab**, which is where they are defined and
 edited; `O` opens the application itself.
 
-The selectors and time zone come from a second call, for the project's list —
-the per-application payload omits them. These windows are edited by automation,
-so a window can be present in one response and absent from the other; when that
-happens argx marks the detail unknown rather than showing the default. An empty
-selector set legitimately means "the whole project", and an unknown zone read as
-UTC would put an Asia/Seoul schedule nine hours off.
+The selectors and time zone come from a second call, for the **project's spec** —
+the per-application payload carries only kind, schedule, duration and
+`manualSync`. Note which project endpoint: `/projects/{name}/syncwindows`
+returns only the windows that are *open right now*, so a window that has not
+opened yet is simply missing from it; argx reads `/projects/{name}` instead,
+which is also the only place the time zone lives.
+
+These windows are edited by automation, so a window can be present in one
+response and absent from the other; when that happens argx marks the detail
+unknown rather than showing the default. An empty selector set legitimately
+means "the whole project", and an unknown zone read as UTC would put an
+Asia/Seoul schedule nine hours off.
 
 A blocked sync is flagged in the status line on **every** tab, and summarized in
 DETAILS beside the sync policy — pressing `s` and being rejected is a worse way
 to find out. Windows are read-only here: they are defined per project, so a
 change reaches every application in it at once, which belongs in the repository
 that owns the project.
+
+## Scheduled syncs
+
+Syncing into a closed window does not simply fail. Argo CD records the rejection
+as a **failed operation on the application** — noise in the one place someone
+looks when something is actually wrong. The alternative people fall back on is
+remembering to come back at 15:00, which is worse.
+
+So argx waits. In the sync modal, `w` turns on **wait for the sync window**; the
+sync is queued and fires when the window opens.
+
+```
+  STATE      WHEN               APPLICATION
+▸ waiting    08-31 15:00 (in 3h50m)  web-frontend
+             waiting for allow window "0 15 * * *" (2h Asia/Seoul)
+  cancelled  08-31 15:00        api-gateway
+             target revision changed: main → release-2
+  done       08-31 15:00        worker
+```
+
+`W` opens the list from anywhere and closes it again. `x` cancels a row, `c`
+clears the finished ones, `o` opens the application in the browser. The count of
+waiting syncs sits in the application list's status line, since a scheduled sync
+is otherwise invisible.
+
+The modal pre-selects waiting when argx already knows the window is closed, and
+says outright that syncing now would be refused.
+
+**They live only while argx runs.** There is no daemon and no state file — a
+sync that fires while nobody is watching is not something to build by accident.
+`q` therefore asks before quitting with syncs still waiting, and names them;
+`ctrl+c` still quits immediately, because an interrupt that asks a question is
+not an interrupt.
+
+**When it opens** is computed by argx, because the server only answers whether a
+window is open *now*. The computation uses Argo CD's own cron parser and mirrors
+its `CanSync` rules exactly, including the two that are easy to miss: one open
+deny window without `manualSync` blocks every other window's permission, and a
+set of *closed* allow windows still permits a manual sync when every one of them
+sets `manualSync`. Getting either wrong means waiting hours for a sync the
+server would have taken immediately.
+
+**Before firing**, each schedule re-checks its premises against the server and
+declines rather than deploying something nobody agreed to:
+
+| check | why |
+|---|---|
+| still `OutOfSync` at the scheduled revision | otherwise it records a no-op operation |
+| target revision unchanged | a sync is what you asked for *when* you asked; a revision that arrived since is not |
+| auto-sync still off | the controller now owns syncing, and a scheduled sync would race it |
+| the server still says it can sync | a window edited in the meantime is exactly the case this guards |
+
+A declined sync keeps its row with the reason. It is a schedule that vanished
+silently that would be the real failure — nobody would know.
+
+The list is examined every ten seconds, and only while something is pending: a
+window is measured in hours, so being ten seconds late costs nothing and waking
+every second for hours costs a laptop fan. With nothing scheduled argx renders
+zero frames.
 
 Spec changes go out as **merge patches**, not a whole-spec PUT: a PUT would
 replace the spec with what argx modeled and silently drop every field it does

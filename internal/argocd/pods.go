@@ -202,15 +202,27 @@ func (c *Client) SyncWindows(ctx context.Context, app *Application) (*AppSyncWin
 	return &out, nil
 }
 
-// ProjectSyncWindows fetches every window defined on a project, including those
-// that do not apply to any particular application.
+// ProjectSyncWindows fetches every window defined on a project.
+//
+// This reads the project's spec, not /projects/{name}/syncwindows — that
+// endpoint returns only the windows that are *open right now*
+// (server/project/project.go calls SyncWindows.Active()), so a window that has
+// not opened yet is simply absent from it. argx needs the whole set: a closed
+// window is exactly the one a scheduled sync is waiting for.
+//
+// The spec is also the only place the fields live. The per-application payload
+// carries kind, schedule, duration and manualSync and nothing else — no time
+// zone, no selectors (server/application/application.go, convertSyncWindows) —
+// and an Asia/Seoul schedule read as UTC is nine hours off.
 func (c *Client) ProjectSyncWindows(ctx context.Context, project string) ([]SyncWindow, error) {
 	var out struct {
-		Windows []SyncWindow `json:"windows"`
+		Spec struct {
+			SyncWindows []SyncWindow `json:"syncWindows"`
+		} `json:"spec"`
 	}
-	p := "/api/v1/projects/" + url.PathEscape(project) + "/syncwindows"
+	p := "/api/v1/projects/" + url.PathEscape(project)
 	if err := c.do(ctx, http.MethodGet, p, nil, nil, &out); err != nil {
 		return nil, err
 	}
-	return out.Windows, nil
+	return out.Spec.SyncWindows, nil
 }

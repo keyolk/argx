@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -174,6 +175,31 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(m.loadAppsCmd(), tickCmd())
 
+	case scheduledMsg:
+		return m, m.addSchedules(msg)
+
+	case scheduleTickMsg:
+		// The ticker stops as soon as nothing is pending, so a session that has
+		// run all its schedules goes back to zero frames.
+		cmd := m.runDueSchedules(time.Time(msg))
+		if m.pendingSchedules() == 0 {
+			return m, cmd
+		}
+		return m, tea.Batch(cmd, scheduleTickCmd())
+
+	case scheduleRunMsg:
+		if err := m.applyScheduleResult(msg); err != nil {
+			// The row was cleared while its sync was in flight. The sync still
+			// happened, so saying nothing would be the wrong kind of quiet.
+			m.setToast("a cleared scheduled sync finished: " + msg.state.String())
+			return m, nil
+		}
+		m.clampScheduleCursor()
+		if msg.state == scheduleFailed {
+			m.setToast("scheduled sync failed: " + msg.reason)
+		}
+		return m, nil
+
 	case tea.KeyMsg:
 		// ctrl+c is the terminal's interrupt and quits from anywhere: inside a
 		// modal, mid-search, during a confirmation. Routing it through the
@@ -222,6 +248,15 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// Reached only when no overlay is open and the filter prompt is closed,
 		// since q is an ordinary letter and a search that cannot contain it
 		// would be broken.
+		//
+		// The one thing that stops it is pending scheduled syncs: they exist
+		// only in this process, so quitting silently cancels work the reader
+		// asked for and would have no way of noticing. Ctrl+C still quits
+		// immediately — an interrupt that asks a question is not an interrupt.
+		if n := m.pendingSchedules(); n > 0 {
+			m.armQuitConfirm(n)
+			return m, nil
+		}
 		return m, tea.Quit
 	case "S":
 		// The two lists are peers, not a stack: S toggles between them from
@@ -237,6 +272,17 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.screen = screenApps
 			return m, nil
 		}
+	case "W":
+		// Available from every screen: a schedule belongs to the session, not
+		// to whatever the reader happens to be looking at, and a key that only
+		// works in one place is one people cannot find when they need it.
+		if m.screen == screenSchedule {
+			m.pop()
+			return m, nil
+		}
+		m.push(screenSchedule)
+		m.clampScheduleCursor()
+		return m, nil
 	case "?":
 		if m.screen == screenHelp {
 			m.pop()
@@ -268,6 +314,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleAppKey(msg)
 	case screenWindows:
 		return m.handleWindowsKey(msg)
+	case screenSchedule:
+		return m.handleScheduleKey(msg)
 	case screenDiff, screenManifest, screenLogs, screenEvents, screenHelp:
 		return m.handlePagerKey(msg)
 	}
