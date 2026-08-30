@@ -123,7 +123,7 @@ func (m *Model) renderStatus() string {
 			}
 		}
 	case screenSchedule:
-		waiting, done, declined, failed := 0, 0, 0, 0
+		waiting, syncing, done, declined, failed := 0, 0, 0, 0, 0
 		for _, sc := range m.schedules {
 			switch sc.state {
 			case scheduleDone:
@@ -132,11 +132,16 @@ func (m *Model) renderStatus() string {
 				failed++
 			case scheduleCancelled:
 				declined++
+			case scheduleRunning, scheduleSyncing:
+				syncing++
 			default:
 				waiting++
 			}
 		}
 		parts = append(parts, m.st.dim.Render(fmt.Sprintf("%d waiting", waiting)))
+		if syncing > 0 {
+			parts = append(parts, m.st.info.Render(fmt.Sprintf("%d syncing", syncing)))
+		}
 		if done > 0 {
 			parts = append(parts, m.st.success.Render(fmt.Sprintf("%d synced", done)))
 		}
@@ -266,6 +271,18 @@ func (m *Model) renderFilter(q string) string {
 		m.st.filter.Render(after)
 }
 
+// syncHint labels the sync key, saying so when a window is blocking.
+//
+// "s sync" on an application argx already knows cannot sync is an invitation to
+// press it and have Argo CD record a failed operation. Naming the alternative
+// costs four cells and is only shown when it applies.
+func (m *Model) syncHint() string {
+	if m.syncBlocked() {
+		return "s sync (w waits)"
+	}
+	return "s sync"
+}
+
 // renderFooter is the always-visible hint line, per screen.
 func (m *Model) renderFooter() string {
 	var hints []string
@@ -277,14 +294,16 @@ func (m *Model) renderFooter() string {
 		case tabHistory:
 			hints = []string{"enter rollback", "[ ] tabs", "d diff", "w windows", "o browser", "esc back", "q quit"}
 		case tabDetails:
-			hints = []string{"enter edit", "[ ] tabs", "s sync", "w windows", "e events", "esc back", "q quit"}
+			hints = []string{"enter edit", "[ ] tabs", m.syncHint(), "w windows", "e events", "esc back", "q quit"}
 		default:
-			hints = []string{"space mark", "enter manifest", "d diff", "D app diff", "l logs", "e shell", "s sync", "w windows", "esc back", "q quit"}
+			hints = []string{"space mark", "enter manifest", "d diff", "D app diff", "l logs", "e shell", m.syncHint(), "w windows", "esc back", "q quit"}
 		}
 	case screenAppSets:
 		hints = []string{"enter apps", "y spec", "o browser", "S applications", "/ filter", "? help", "q quit"}
 	case screenWindows:
-		hints = []string{"j/k move", "o project", "O app", "r reload", "esc back", "q quit"}
+		// A reader on this screen is here because syncing is blocked, which is
+		// the one moment "you can wait for it instead" is worth knowing.
+		hints = []string{"j/k move", "s+w schedule a sync", "o project", "O app", "r reload", "esc back", "q quit"}
 	case screenSchedule:
 		hints = []string{"j/k move", "x cancel", "c clear finished", "o browser", "esc back", "q quit"}
 	case screenHelp:
@@ -293,15 +312,30 @@ func (m *Model) renderFooter() string {
 		hints = []string{"j/k scroll", "/ search", "n/N match", "M noise", "esc back", "q quit"}
 	}
 
+	// Pending syncs lead, on every screen. They exist only in this process and
+	// are otherwise invisible from wherever the reader happens to be, so the way
+	// back to them has to survive the narrowing below — which drops from the
+	// right — rather than being the first thing to go.
+	if n := m.pendingSchedules(); n > 0 && m.screen != screenSchedule {
+		hints = append([]string{fmt.Sprintf("W %d scheduled", n)}, hints...)
+	}
+
 	// Drop hints from the right until the line fits, so a narrow terminal keeps
 	// the most important ones rather than wrapping.
-	for len(hints) > 1 {
-		s := strings.Join(hints, "  ")
+	//
+	// Except the last one. Every hint list ends in "q quit", and a footer that
+	// drops the way out to make room for "d diff" has cut the wrong thing —
+	// someone who cannot find the exit kills the terminal window.
+	tail := hints[len(hints)-1]
+	body := hints[:len(hints)-1]
+	for len(body) > 0 {
+		s := strings.Join(append(append([]string{}, body...), tail), "  ")
 		if lipgloss.Width(s) <= m.width {
 			break
 		}
-		hints = hints[:len(hints)-1]
+		body = body[:len(body)-1]
 	}
+	hints = append(body, tail)
 	return m.st.footer.Render(truncate(strings.Join(hints, "  "), m.width))
 }
 

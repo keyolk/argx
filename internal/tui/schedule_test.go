@@ -446,3 +446,214 @@ func TestTickIssuesDueSchedulesOnce(t *testing.T) {
 		t.Errorf("state = %v, want it still running and not re-issued", m.schedules[0].state)
 	}
 }
+
+// The way back to a pending schedule has to be visible from wherever the reader
+// is. Schedules exist only in this process and are otherwise invisible, so a
+// key that only announces itself once you have already found the list is no
+// announcement at all.
+func TestPendingSchedulesAreHintedOnEveryScreen(t *testing.T) {
+	for _, sc := range []screen{screenApps, screenAppSets, screenApp, screenWindows, screenDiff} {
+		m := newTestModel(t, "web")
+		m.Update(tea.WindowSizeMsg{Width: 160, Height: 24})
+		m.schedules = []scheduled{sched(1, "web", time.Hour)}
+		m.screen = sc
+
+		if out := stripANSI(m.renderFooter()); !strings.Contains(out, "W 1 scheduled") {
+			t.Errorf("screen %v footer does not mention the pending sync:\n%s", sc, out)
+		}
+	}
+
+	// Not on the list itself — the reader is already looking at it.
+	m := newTestModel(t)
+	m.Update(tea.WindowSizeMsg{Width: 160, Height: 24})
+	m.schedules = []scheduled{sched(1, "web", time.Hour)}
+	m.screen = screenSchedule
+	if out := stripANSI(m.renderFooter()); strings.Contains(out, "W 1 scheduled") {
+		t.Errorf("the schedule list should not point at itself:\n%s", out)
+	}
+}
+
+// With nothing pending the hint is absent: a permanent reminder of an empty
+// list is chrome, and the footer's width is the scarce thing here.
+func TestNoScheduleHintWhenNothingIsPending(t *testing.T) {
+	m := newTestModel(t, "web")
+	m.Update(tea.WindowSizeMsg{Width: 160, Height: 24})
+
+	if out := stripANSI(m.renderFooter()); strings.Contains(out, "scheduled") {
+		t.Errorf("no schedules, no hint:\n%s", out)
+	}
+}
+
+// A narrow terminal drops hints from the right, so the pending count must lead
+// — it is the one that cannot be rediscovered any other way.
+func TestScheduleHintSurvivesANarrowTerminal(t *testing.T) {
+	m := newTestModel(t, "web")
+	m.Update(tea.WindowSizeMsg{Width: 60, Height: 24})
+	m.schedules = []scheduled{sched(1, "web", time.Hour)}
+
+	if out := stripANSI(m.renderFooter()); !strings.Contains(out, "W 1 scheduled") {
+		t.Errorf("the pending count should outlive the other hints at 60 columns:\n%s", out)
+	}
+}
+
+// On an application argx knows is blocked, the sync hint names the alternative.
+// "s sync" there is an invitation to press it and have Argo CD record a failed
+// operation.
+func TestSyncHintNamesWaitingWhenBlocked(t *testing.T) {
+	m := appModel(t, nil)
+	m.Update(tea.WindowSizeMsg{Width: 160, Height: 24})
+	m.Update(windowsMsg{id: m.windowID, windows: &argocd.AppSyncWindows{
+		AssignedWindows: []argocd.SyncWindow{{Kind: "deny", Schedule: "0 0 * * *", Duration: "4h"}},
+		CanSync:         false,
+	}})
+	m.screen = screenApp
+	m.tab = tabResources
+
+	if out := stripANSI(m.renderFooter()); !strings.Contains(out, "w waits") {
+		t.Errorf("a blocked application should say syncing can wait:\n%s", out)
+	}
+
+	// Unblocked, the plain label stays — the option is in the modal either way.
+	m.Update(windowsMsg{id: m.windowID, windows: &argocd.AppSyncWindows{CanSync: true}})
+	if out := stripANSI(m.renderFooter()); strings.Contains(out, "w waits") {
+		t.Errorf("an unblocked application does not need the note:\n%s", out)
+	}
+}
+
+// The window view is where a reader lands when syncing is blocked, which is the
+// one moment "you can wait for it instead" is worth knowing.
+func TestWindowViewPointsAtScheduling(t *testing.T) {
+	m := appModel(t, nil)
+	m.Update(tea.WindowSizeMsg{Width: 160, Height: 24})
+	m.screen = screenWindows
+
+	if out := stripANSI(m.renderFooter()); !strings.Contains(out, "schedule") {
+		t.Errorf("the window view should offer scheduling:\n%s", out)
+	}
+}
+
+// Accepting a sync request and finishing the sync are different events. A row
+// that stopped at the first would report success for a sync that went on to
+// fail — the reading someone acts on at three in the morning.
+func TestAcceptedSyncIsNotYetDone(t *testing.T) {
+	m := newTestModel(t)
+	m.schedules = []scheduled{sched(1, "web", -time.Minute)}
+
+	started := time.Now()
+	m.Update(scheduleRunMsg{id: 1, state: scheduleSyncing, startedAt: started})
+
+	if m.schedules[0].state != scheduleSyncing {
+		t.Fatalf("state = %v, want syncing", m.schedules[0].state)
+	}
+	if m.pendingSchedules() != 1 {
+		t.Error("a sync in progress is still pending — the ticker has to keep polling it")
+	}
+	if !m.schedules[0].startedAt.Equal(started) {
+		t.Error("the row should remember when Argo CD accepted the sync")
+	}
+	if !m.schedules[0].ranAt.IsZero() {
+		t.Error("nothing has finished yet, so there is no finish time")
+	}
+}
+
+// The tick keeps polling a sync in flight rather than treating it as settled.
+func TestTickPollsASyncInFlight(t *testing.T) {
+	m := newTestModel(t)
+	s := sched(1, "web", -time.Minute)
+	s.state = scheduleSyncing
+	s.startedAt = time.Now()
+	m.schedules = []scheduled{s}
+
+	_, cmd := m.Update(scheduleTickMsg(time.Now()))
+	if cmd == nil {
+		t.Fatal("a sync in flight should keep the ticker running and be polled")
+	}
+	if m.schedules[0].state != scheduleSyncing {
+		t.Errorf("state = %v, want it left syncing until the server says otherwise", m.schedules[0].state)
+	}
+}
+
+// A sync that Argo CD ran and failed reports the failure, not a success.
+func TestFailedSyncIsReportedAsFailed(t *testing.T) {
+	m := newTestModel(t)
+	m.Update(tea.WindowSizeMsg{Width: 140, Height: 24})
+	s := sched(1, "web-frontend", -time.Minute)
+	s.state = scheduleSyncing
+	m.schedules = []scheduled{s}
+	m.screen = screenSchedule
+
+	m.Update(scheduleRunMsg{id: 1, state: scheduleFailed,
+		reason: "Failed: one or more objects failed to apply"})
+
+	if m.pendingSchedules() != 0 {
+		t.Error("a failed sync is finished")
+	}
+	out := stripANSI(m.View())
+	if !strings.Contains(out, "failed") || !strings.Contains(out, "objects failed to apply") {
+		t.Errorf("the failure and its message should both be visible:\n%s", out)
+	}
+}
+
+// A sync can succeed into a Degraded application, which is the case worth
+// naming — "synced" alone would read as "all well".
+func TestSyncOutcomeNamesAnUnwellApplication(t *testing.T) {
+	var a argocd.Application
+	a.Status.Sync.Status = "Synced"
+	a.Status.Health.Status = "Healthy"
+	if got := syncOutcome(&a); got != "" {
+		t.Errorf("a healthy result needs no explanation, got %q", got)
+	}
+
+	a.Status.Health.Status = "Degraded"
+	if got := syncOutcome(&a); !strings.Contains(got, "Degraded") {
+		t.Errorf("outcome = %q, want it to name the unhealthy result", got)
+	}
+}
+
+// A dry run applies nothing, so there is no outcome to wait for.
+func TestDryRunFinishesImmediately(t *testing.T) {
+	m := newTestModel(t)
+	m.schedules = []scheduled{sched(1, "web", -time.Minute)}
+
+	m.Update(scheduleRunMsg{id: 1, state: scheduleDone, reason: "dry run"})
+
+	if m.pendingSchedules() != 0 {
+		t.Error("a dry run has nothing left to poll")
+	}
+}
+
+// The syncing state is visible as its own thing, not folded into waiting.
+func TestSyncingIsVisibleInTheList(t *testing.T) {
+	m := newTestModel(t)
+	m.Update(tea.WindowSizeMsg{Width: 140, Height: 24})
+	s := sched(1, "web-frontend", -time.Minute)
+	s.state = scheduleSyncing
+	s.startedAt = time.Now().Add(-90 * time.Second)
+	m.schedules = []scheduled{s}
+	m.screen = screenSchedule
+
+	out := stripANSI(m.View())
+	if !strings.Contains(out, "syncing") {
+		t.Errorf("a sync in progress should say so:\n%s", out)
+	}
+	if !strings.Contains(out, "Argo CD accepted") {
+		t.Errorf("the row should explain what it is waiting for:\n%s", out)
+	}
+	if !strings.Contains(out, "1 syncing") {
+		t.Errorf("the status line should count it separately from waiting:\n%s", out)
+	}
+}
+
+// The whole point of the WHEN column is the countdown, so it must not be the
+// thing that gets truncated.
+func TestScheduleListShowsTheCountdown(t *testing.T) {
+	m := newTestModel(t)
+	m.Update(tea.WindowSizeMsg{Width: 120, Height: 24})
+	m.schedules = []scheduled{sched(1, "web", 90*time.Minute)}
+	m.screen = screenSchedule
+
+	if out := stripANSI(m.View()); !strings.Contains(out, "(in 1h29m)") &&
+		!strings.Contains(out, "(in 1h30m)") {
+		t.Errorf("the countdown should be readable, not cut:\n%s", out)
+	}
+}

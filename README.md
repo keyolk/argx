@@ -342,13 +342,22 @@ So argx waits. In the sync modal, `w` turns on **wait for the sync window**; the
 sync is queued and fires when the window opens.
 
 ```
-  STATE      WHEN               APPLICATION
-▸ waiting    08-31 15:00 (in 3h50m)  web-frontend
+  STATE      WHEN                     APPLICATION
+▸ syncing    for 45s                  mesg-ap9-prod-web
+             Argo CD accepted the sync — waiting for it to finish
+  waiting    08-31 15:00 (in 3h50m)   web-frontend
              waiting for allow window "0 15 * * *" (2h Asia/Seoul)
-  cancelled  08-31 15:00        api-gateway
-             target revision changed: main → release-2
-  done       08-31 15:00        worker
+  failed     08-31 15:02              api-gateway
+             Failed: one or more objects failed to apply
+  synced     08-31 15:00              worker
 ```
+
+A row does not stop at `syncing`. Accepting a sync request and finishing the
+sync are different events, so argx polls the operation it started — matched by
+its start time, since an operation that began before argx asked belongs to
+somebody else — and reports what actually happened. A sync that succeeds into a
+still-`OutOfSync` application says so rather than reporting a plain success;
+that case is real in this fleet.
 
 `W` opens the list from anywhere and closes it again. `x` cancels a row, `c`
 clears the finished ones, `o` opens the application in the browser. The count of

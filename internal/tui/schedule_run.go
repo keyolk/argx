@@ -7,6 +7,8 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/keyolk/argx/internal/argocd"
 )
 
 // Running a scheduled sync.
@@ -23,6 +25,9 @@ type scheduleRunMsg struct {
 	id     int
 	state  scheduleState
 	reason string
+	// startedAt is when Argo CD accepted the sync, carried so the row can
+	// recognise the operation that follows as its own.
+	startedAt time.Time
 }
 
 // runDueSchedules issues the syncs whose time has come.
@@ -33,16 +38,81 @@ func (m *Model) runDueSchedules(now time.Time) tea.Cmd {
 	var cmds []tea.Cmd
 	for i := range m.schedules {
 		s := &m.schedules[i]
-		if !s.due(now) {
-			continue
+		switch {
+		case s.due(now):
+			s.state = scheduleRunning
+			cmds = append(cmds, m.runScheduleCmd(*s))
+		case s.state == scheduleSyncing:
+			// Accepting a sync request and finishing the sync are different
+			// events. A row that stopped at the first would report success for
+			// a sync that went on to fail, which is the reading someone acts on
+			// at three in the morning.
+			cmds = append(cmds, m.pollScheduleCmd(*s))
 		}
-		s.state = scheduleRunning
-		cmds = append(cmds, m.runScheduleCmd(*s))
 	}
 	if len(cmds) == 0 {
 		return nil
 	}
 	return tea.Batch(cmds...)
+}
+
+// pollScheduleCmd asks how a sync argx issued is getting on.
+func (m *Model) pollScheduleCmd(s scheduled) tea.Cmd {
+	client, err := m.fleet.Client(s.context)
+	if err != nil {
+		return func() tea.Msg {
+			return scheduleRunMsg{id: s.id, state: scheduleFailed, reason: err.Error()}
+		}
+	}
+	ctx := m.ctx
+
+	return func() tea.Msg {
+		c, cancel := context.WithTimeout(ctx, 30*time.Second)
+		defer cancel()
+
+		app, err := client.GetApplication(c, s.app.Name, s.app.AppNamespace)
+		if err != nil {
+			// A failed poll is not a failed sync. The sync is running on the
+			// server either way, so the row stays as it is and the next tick
+			// asks again.
+			return nil
+		}
+
+		op := app.Status.OperationState
+		if op == nil || op.StartedAt.Before(s.startedAt) {
+			// Not our operation yet — Argo CD has not replaced the previous
+			// one. Reporting the old operation's outcome would attribute a
+			// stranger's failure to a sync argx ran.
+			return nil
+		}
+
+		switch op.Phase {
+		case "Succeeded":
+			return scheduleRunMsg{id: s.id, state: scheduleDone,
+				reason: syncOutcome(app)}
+		case "Failed", "Error":
+			reason := op.Phase
+			if op.Message != "" {
+				reason += ": " + op.Message
+			}
+			return scheduleRunMsg{id: s.id, state: scheduleFailed, reason: reason}
+		}
+		// Running or Terminating: still going.
+		return nil
+	}
+}
+
+// syncOutcome describes where the application ended up.
+//
+// "synced" on its own says the operation succeeded, which is not the same as
+// the application being well — a sync can succeed into a Degraded app, and that
+// is the case worth naming.
+func syncOutcome(a *argocd.Application) string {
+	sync, health := a.Status.Sync.Status, a.Status.Health.Status
+	if sync == "Synced" && health == "Healthy" {
+		return ""
+	}
+	return fmt.Sprintf("synced, but the application is %s / %s", sync, health)
 }
 
 // runScheduleCmd re-checks a schedule's premises and, if they hold, syncs.
@@ -101,10 +171,17 @@ func (m *Model) runScheduleCmd(s scheduled) tea.Cmd {
 			return decline("the sync window is still closed")
 		}
 
+		// The moment before asking, so an operation that starts after this is
+		// recognisably the one argx just requested.
+		asked := time.Now()
 		if _, err := client.Sync(c, s.app.Name, s.opts); err != nil {
 			return scheduleRunMsg{id: s.id, state: scheduleFailed, reason: err.Error()}
 		}
-		return scheduleRunMsg{id: s.id, state: scheduleDone}
+		if s.opts.DryRun {
+			// A dry run applies nothing, so there is no outcome to wait for.
+			return scheduleRunMsg{id: s.id, state: scheduleDone, reason: "dry run"}
+		}
+		return scheduleRunMsg{id: s.id, state: scheduleSyncing, startedAt: asked}
 	}
 }
 
@@ -155,7 +232,12 @@ func (m *Model) applyScheduleResult(msg scheduleRunMsg) error {
 		}
 		m.schedules[i].state = msg.state
 		m.schedules[i].reason = msg.reason
-		m.schedules[i].ranAt = time.Now()
+		if !msg.startedAt.IsZero() {
+			m.schedules[i].startedAt = msg.startedAt
+		}
+		if msg.state.finished() {
+			m.schedules[i].ranAt = time.Now()
+		}
 		m.sortSchedules()
 		return nil
 	}

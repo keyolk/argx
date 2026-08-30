@@ -129,7 +129,16 @@ func (m *Model) detailRows() []detailRow {
 	}
 
 	if op := a.Status.OperationState; op != nil {
-		rows = append(rows, detailRow{kind: detailStatic, label: "last operation", value: op.Phase})
+		phase := op.Phase
+		// The list stops flagging a failure the application has recovered from
+		// (see Application.Degraded), so this row says outright that the
+		// failure is history — otherwise DETAILS and the list disagree and the
+		// reader has to work out which is lying.
+		if (op.Phase == "Failed" || op.Phase == "Error") &&
+			a.Status.Sync.Status == "Synced" && a.Status.Health.Status == "Healthy" {
+			phase += "  (resolved since — now Synced and Healthy)"
+		}
+		rows = append(rows, detailRow{kind: detailStatic, label: "last operation", value: phase})
 		if op.Message != "" {
 			rows = append(rows, detailRow{kind: detailStatic, label: "  message", value: op.Message})
 		}

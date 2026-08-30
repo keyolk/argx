@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"strings"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -13,6 +14,10 @@ import (
 // One row per sync, soonest first, with finished ones falling to the bottom
 // rather than disappearing: a sync that declined to run is the thing the reader
 // most needs to see, and a row that vanishes takes its reason with it.
+
+// whenCol is the width of the WHEN column: enough for a timestamp and the
+// countdown beside it, "08-31 03:36 (in 1h30m)".
+const whenCol = 24
 
 // renderSchedule draws the scheduled-sync view.
 func (m *Model) renderSchedule() string {
@@ -26,7 +31,7 @@ func (m *Model) renderSchedule() string {
 	now := time.Now()
 	lines := make([]string, 0, h)
 	lines = append(lines, m.st.header.Render(truncate(
-		"  STATE      WHEN               APPLICATION", m.width)))
+		"  STATE      WHEN                     APPLICATION", m.width)))
 
 	for r := m.scheduleTop; r < len(m.schedules) && len(lines) < h; r++ {
 		s := m.schedules[r]
@@ -44,17 +49,20 @@ func (m *Model) renderSchedule() string {
 			stateStyle = m.st.err
 		case scheduleCancelled:
 			stateStyle = m.st.warn
-		case scheduleRunning:
+		case scheduleRunning, scheduleSyncing:
 			stateStyle = m.st.info
 		default:
 			stateStyle = m.st.dim
 		}
 
 		when := s.when(now)
-		if s.state.finished() {
+		switch {
+		case s.state.finished():
 			// A finished row's firing time is history; what it did and when is
 			// the useful fact.
 			when = s.ranAt.Local().Format("01-02 15:04")
+		case s.state == scheduleSyncing:
+			when = "for " + formatWait(now.Sub(s.startedAt))
 		}
 
 		nameStyle := lipgloss.NewStyle()
@@ -66,15 +74,17 @@ func (m *Model) renderSchedule() string {
 			name = m.ctxStyle(s.context).Render(s.context) + m.st.dim.Render("/") + name
 		}
 
+		// The whole point of the column is the countdown, and "08-31 03:36 (in
+		// 1…" answers neither question. 24 cells fit "08-31 03:36 (in 1h30m)".
 		line := cursor + " " + stateStyle.Render(padRight(s.state.String(), 10)) + " " +
-			m.st.dim.Render(padRight(truncate(when, 18), 18)) + " " +
+			m.st.dim.Render(padRight(truncate(when, whenCol), whenCol)) + " " +
 			nameStyle.Render(name)
 		lines = append(lines, truncate(line, m.width))
 
 		// The second line is why, and it only exists when there is a why: a
 		// blank continuation on every row would halve the number visible.
 		if detail := m.scheduleDetail(s); detail != "" && len(lines) < h {
-			lines = append(lines, truncate("             "+m.st.dim.Render(detail), m.width))
+			lines = append(lines, truncate(strings.Repeat(" ", 13)+m.st.dim.Render(detail), m.width))
 		}
 	}
 	return padBody(lines, h)
@@ -84,6 +94,9 @@ func (m *Model) renderSchedule() string {
 func (m *Model) scheduleDetail(s scheduled) string {
 	if s.reason != "" {
 		return s.reason
+	}
+	if s.state == scheduleSyncing {
+		return "Argo CD accepted the sync — waiting for it to finish"
 	}
 	if s.state != scheduleWaiting || s.window.Schedule == "" {
 		return ""
