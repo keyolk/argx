@@ -142,9 +142,15 @@ func TestMarkAllRespectsFilter(t *testing.T) {
 		t.Error("a filtered-out app must not be marked")
 	}
 
+	// a marks; it does not unmark. A key whose effect depends on how many rows
+	// happen to be marked is one whose effect you find out by pressing it.
 	press(t, m, "a")
+	if len(m.appMarks) != 2 {
+		t.Errorf("a second `a` should be a no-op, got %d marks", len(m.appMarks))
+	}
+	press(t, m, "A")
 	if len(m.appMarks) != 0 {
-		t.Errorf("a second `a` should clear the filtered marks, got %d", len(m.appMarks))
+		t.Errorf("A clears, got %d", len(m.appMarks))
 	}
 }
 

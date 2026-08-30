@@ -10,6 +10,11 @@ import (
 )
 
 func (m *Model) handleAppsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// The mark vocabulary is the same on both lists, so it is handled in one
+	// place; anything it does not claim falls through to the keys below.
+	if cmd, handled := m.handleMarkKey(msg, m.appScope(), &m.appCur); handled {
+		return m, cmd
+	}
 	switch msg.String() {
 	case "j", "down":
 		m.moveApp(1)
@@ -25,33 +30,6 @@ func (m *Model) handleAppsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.appCur = len(m.appRows) - 1
 		m.clampScroll()
 
-	case " ":
-		// Space marks and advances, so marking a run of adjacent apps is one
-		// key repeated rather than an alternation of space and j.
-		if a := m.currentApp(); a != nil {
-			k := a.Key()
-			if m.appMarks[k] {
-				delete(m.appMarks, k)
-			} else {
-				m.appMarks[k] = true
-			}
-			m.moveApp(1)
-		}
-	case "a":
-		// Toggle-all over the *filtered* rows: with a filter active, "all"
-		// meaning every app on the server would mark things the user cannot see.
-		if m.allFilteredAppsMarked() {
-			for _, i := range m.appRows {
-				delete(m.appMarks, m.apps[i].Key())
-			}
-			m.setToast("cleared marks")
-		} else {
-			for _, i := range m.appRows {
-				m.appMarks[m.apps[i].Key()] = true
-			}
-			// No toast: the status line already carries the mark count, and
-			// saying it twice is how a status line stops being read.
-		}
 	case "ctrl+\\":
 		// Not bound — listed here only as a reminder that terminal-reserved
 		// keys stay unbound.
@@ -122,6 +100,9 @@ func (m *Model) handleAppsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleTreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if cmd, handled := m.handleMarkKey(msg, m.treeScope(), &m.treeCur); handled {
+		return m, cmd
+	}
 	switch msg.String() {
 	case "j", "down":
 		m.moveTree(1)
@@ -136,27 +117,6 @@ func (m *Model) handleTreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "G", "end":
 		m.treeCur = len(m.treeRows) - 1
 		m.clampScroll()
-
-	case " ":
-		if n := m.currentNode(); n != nil {
-			if m.treeMarks[n.UID] {
-				delete(m.treeMarks, n.UID)
-			} else {
-				m.treeMarks[n.UID] = true
-			}
-			m.moveTree(1)
-		}
-	case "a":
-		if m.allFilteredNodesMarked() {
-			for _, i := range m.treeRows {
-				delete(m.treeMarks, m.tree[i].Node.UID)
-			}
-			m.setToast("cleared marks")
-		} else {
-			for _, i := range m.treeRows {
-				m.treeMarks[m.tree[i].Node.UID] = true
-			}
-		}
 
 	case "enter":
 		if n := m.currentNode(); n != nil && m.app != nil {

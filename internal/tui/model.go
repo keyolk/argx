@@ -204,6 +204,16 @@ type Model struct {
 	// and two columns need a wide terminal to be worth it.
 	sxs bool
 
+	// ---- multi-select ----
+	//
+	// visualFrom is where a range select started, or -1. The rows between it
+	// and the cursor are drawn as marked before they are marked, so the reader
+	// sees what v will take.
+	visualFrom int
+	// markedOnly narrows both lists to what is marked, which is how a
+	// selection built across several filters becomes inspectable.
+	markedOnly bool
+
 	// showNoise reveals the bookkeeping fields a manifest carries — see
 	// noiseKeys. Off by default: they are 39% of a real pod manifest and bury
 	// everything else.
@@ -309,17 +319,18 @@ func New(ctx context.Context, fleet *argocd.Fleet, cfg *config.Config) *Model {
 	st.initContexts(len(fleet.Names()))
 	gl := newGlyphsFor(cfg.Icons)
 	return &Model{
-		ctx:       ctx,
-		fleet:     fleet,
-		cfg:       cfg,
-		st:        st,
-		gl:        gl,
-		screen:    screenApps,
-		tab:       tabResources,
-		appMarks:  map[string]bool{},
-		treeMarks: map[string]bool{},
-		width:     80,
-		height:    24,
+		ctx:        ctx,
+		fleet:      fleet,
+		cfg:        cfg,
+		st:         st,
+		gl:         gl,
+		screen:     screenApps,
+		tab:        tabResources,
+		appMarks:   map[string]bool{},
+		treeMarks:  map[string]bool{},
+		visualFrom: -1,
+		width:      80,
+		height:     24,
 	}
 }
 

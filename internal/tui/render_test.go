@@ -185,8 +185,16 @@ func TestFooterHintsShrinkRatherThanWrap(t *testing.T) {
 		t.Error("the narrow footer should drop hints rather than keep them all")
 	}
 	// The first hint is the most important one and must always survive.
-	if !strings.Contains(nf, "space mark") {
+	if !strings.Contains(nf, "space") {
 		t.Errorf("the narrow footer dropped the primary hint: %q", nf)
+	}
+	// So must the two at the end. The exit is how you leave; the help is the
+	// only place the hints that did not fit are written down, and dropping it
+	// exactly when the footer is too small to list them is the worst moment.
+	for _, want := range []string{"? help", "q quit"} {
+		if !strings.Contains(nf, want) {
+			t.Errorf("the narrow footer dropped %q, which it must keep: %q", want, nf)
+		}
 	}
 }
 

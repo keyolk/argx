@@ -43,9 +43,15 @@ func (m *Model) renderApps() string {
 		a := &m.apps[m.appRows[r]]
 		cur := r == m.appCur
 
+		// A row inside an in-progress range is drawn as marked before it is
+		// marked, so the reader sees what v will take rather than committing
+		// blind. It is dimmed to keep the distinction: pending, not done.
 		mark := " "
-		if m.appMarks[a.Key()] {
+		switch {
+		case m.appMarks[a.Key()]:
 			mark = m.st.mark.Render(m.gl.marked)
+		case inVisualRange(m, r):
+			mark = m.st.dim.Render(m.gl.marked)
 		}
 		cursor := " "
 		if cur {

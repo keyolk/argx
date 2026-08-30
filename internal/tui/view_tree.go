@@ -41,8 +41,11 @@ func (m *Model) renderTree() string {
 		cur := r == m.treeCur
 
 		mark := " "
-		if m.treeMarks[n.UID] {
+		switch {
+		case m.treeMarks[n.UID]:
 			mark = m.st.mark.Render(m.gl.marked)
+		case inVisualRange(m, r):
+			mark = m.st.dim.Render(m.gl.marked)
 		}
 		cursor := " "
 		if cur {
@@ -204,8 +207,18 @@ func (m *Model) helpLines() []string {
 			{"?", "this help"},
 		}},
 		{"multi-select", []row{
-			{"space", "toggle mark and advance"},
-			{"a", "mark / unmark every filtered row"},
+			{"space", "toggle this row and advance"},
+			{"v", "range — move, then v again; esc cancels"},
+			{"a", "mark every visible row (never unmarks)"},
+			{"A", "clear the visible marks; again for those the filter hides"},
+			{"i", "invert the visible rows"},
+			{"+", "add the visible rows, keeping what is already marked —"},
+			{"", "which is how a selection is built across several filters"},
+			{"m", "show only what is marked, to check it before acting"},
+			{"", ""},
+			{"", "everything is scoped to the filtered rows — marking what"},
+			{"", "you cannot see is how a sync hits the wrong thing"},
+			{"", "marks the filter hides are counted in the status line"},
 			{"", "actions apply to marks, or to the cursor row when none"},
 		}},
 		{"applications", []row{
