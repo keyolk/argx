@@ -23,6 +23,8 @@ func (m *Model) View() string {
 		body = m.renderAppTab()
 	case screenWindows:
 		body = m.renderWindows()
+	case screenSchedule:
+		body = m.renderSchedule()
 	case screenHelp:
 		body = m.renderHelp()
 	default:
@@ -79,6 +81,8 @@ func (m *Model) renderHeader() string {
 		}
 		left = m.st.title.Render("argx") + m.st.dim.Render(" · sync windows · ") +
 			m.st.accent.Render(name)
+	case screenSchedule:
+		left = m.st.title.Render("argx") + m.st.dim.Render(" · scheduled syncs")
 	case screenHelp:
 		left = m.st.title.Render("argx") + m.st.dim.Render(" · help")
 	default:

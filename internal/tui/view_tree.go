@@ -282,6 +282,17 @@ func (m *Model) helpLines() []string {
 			{"", "defined per AppProject; argx shows them, does not edit them"},
 			{"", "a blocked sync is flagged in the status line on every tab"},
 		}},
+		{"scheduled syncs", []row{
+			{"s then w", "wait for the sync window instead of syncing now"},
+			{"", "Argo CD records a sync into a closed window as a failed"},
+			{"", "operation; waiting leaves no such trace"},
+			{"W", "the list of scheduled syncs"},
+			{"x", "cancel the one under the cursor"},
+			{"c", "clear the finished rows"},
+			{"", "they live only while argx runs — quitting drops them"},
+			{"", "before firing, each re-checks the target revision, the"},
+			{"", "sync status, auto-sync, and the window itself"},
+		}},
 		{"status letters", []row{
 			{"S / !", "Synced / OutOfSync"},
 			{"H P D M Z", "Healthy Progressing Degraded Missing Suspended"},

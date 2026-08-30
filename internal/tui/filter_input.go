@@ -298,6 +298,8 @@ func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.syncOpts.prune = !m.syncOpts.prune
 		case "d":
 			m.syncOpts.dryRun = !m.syncOpts.dryRun
+		case "w":
+			m.syncOpts.schedule = !m.syncOpts.schedule
 		case "esc", "n":
 			m.overlay = overlayNone
 		case "enter", "y":
@@ -315,9 +317,19 @@ func (m *Model) openSyncModal() (tea.Model, tea.Cmd) {
 	if len(targets) == 0 {
 		return m, nil
 	}
-	m.syncOpts = syncOptState{targets: targets}
+	m.syncOpts = syncOptState{targets: targets, schedule: m.syncBlocked()}
 	m.overlay = overlaySyncOpts
 	return m, nil
+}
+
+// syncBlocked reports whether argx already knows a sync window is stopping the
+// focused application.
+//
+// It only knows this after the window view has been opened, so it is a default
+// worth pre-setting and never a fact worth asserting: the modal offers the
+// toggle either way, and a scheduled sync re-asks the server before firing.
+func (m *Model) syncBlocked() bool {
+	return m.windows != nil && !m.windows.CanSync
 }
 
 // openTreeSyncModal syncs only the marked resources of the focused app.
@@ -329,7 +341,7 @@ func (m *Model) openTreeSyncModal() (tea.Model, tea.Cmd) {
 	if len(nodes) == 0 {
 		return m, nil
 	}
-	m.syncOpts = syncOptState{targets: []argocd.Application{*m.app}}
+	m.syncOpts = syncOptState{targets: []argocd.Application{*m.app}, schedule: m.syncBlocked()}
 	m.overlay = overlaySyncOpts
 	return m, nil
 }
@@ -371,6 +383,24 @@ func (m *Model) armSyncConfirm() tea.Cmd {
 	}
 
 	targets := m.syncOpts.targets
+
+	if m.syncOpts.schedule {
+		// A scheduled sync is confirmed like any other, because it still syncs
+		// a cluster — just later. What differs is that the reader is told the
+		// waiting is bounded by the process: argx holds these in memory and
+		// nothing fires once it exits.
+		body = append(body, "",
+			m.st.warn.Render("Each sync waits for its window to open."),
+			m.st.dim.Render("Only while argx is running — quitting drops them."))
+		m.confirm = confirmState{
+			title:  "Schedule sync?",
+			body:   body,
+			action: func() tea.Cmd { return m.scheduleSyncsCmd(targets, opt) },
+		}
+		m.overlay = overlayConfirm
+		return nil
+	}
+
 	m.confirm = confirmState{
 		title:  "Sync?",
 		body:   body,

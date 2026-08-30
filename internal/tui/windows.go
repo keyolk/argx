@@ -25,10 +25,11 @@ type windowRow struct {
 	w argocd.SyncWindow
 	// active is true when the window is open right now.
 	active bool
-	// detailed is true when the project's copy supplied the selectors. The
-	// per-application payload omits them, and the two calls are separate — a
-	// window edited between them is present in one and not the other, which is
-	// not hypothetical: these are edited by automation.
+	// detailed is true when the project's spec supplied the selectors and time
+	// zone. The per-application payload carries only kind, schedule, duration
+	// and manualSync, and the two calls are separate — a window edited between
+	// them is present in one and not the other, which is not hypothetical:
+	// these are edited by automation.
 	detailed bool
 }
 
@@ -41,9 +42,10 @@ type windowRow struct {
 // a fuller list would be a second, divergent answer to a question the server
 // already answers.
 //
-// The project's copies are still consulted, but only to recover the selectors:
-// the per-application payload drops them, so a window would otherwise render
-// with no indication of what it covers.
+// The project's spec is still consulted, but only to recover what the
+// per-application payload drops — the selectors and the time zone — so a window
+// would otherwise render with no indication of what it covers, in a zone that
+// is not its own.
 func (m *Model) windowRows() []windowRow {
 	if m.windows == nil {
 		return nil
