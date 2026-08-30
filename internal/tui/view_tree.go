@@ -282,6 +282,16 @@ func (m *Model) helpLines() []string {
 			{"", "defined per AppProject; argx shows them, does not edit them"},
 			{"", "a blocked sync is flagged in the status line on every tab"},
 		}},
+		{"contexts", []row{
+			{"C", "the servers this session is on, and as whom"},
+			{"enter", "the full credential: source, claims, permissions"},
+			{"", "an SSO email, an API key's id, when it expires,"},
+			{"", "and what Argo CD's RBAC will let argx do there"},
+			{"o", "open the server in browser"},
+			{"r", "re-ask every server"},
+			{"", "a fleet holds several credentials at once, and which"},
+			{"", "one is in play is invisible until something is refused"},
+		}},
 		{"scheduled syncs", []row{
 			{"s then w", "wait for the sync window instead of syncing now"},
 			{"", "Argo CD records a sync into a closed window as a failed"},

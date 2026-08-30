@@ -198,6 +198,7 @@ so it stays typeable while the filter prompt is open.
 | `S` | application sets | — | — | — |
 | `w` | — | sync windows | ← | ← |
 | `W` | scheduled syncs | ← | ← | ← |
+| `C` | contexts and their credentials | ← | ← | ← |
 
 In the log view `/` acts as a grep; in a manifest or diff it does more — see
 [Searching a manifest or a diff](#searching-a-manifest-or-a-diff). `Esc` clears
@@ -290,6 +291,73 @@ The shell goes **through Argo CD**, not through kubectl: the session inherits
 Argo CD's RBAC and lands in its audit log, and argx has no way to map a
 destination cluster onto a kubeconfig context anyway. argx suspends while the
 shell has the terminal, and reloads the resource tree when it exits.
+
+## Contexts
+
+`C` from anywhere lists the servers this session is on and, for each, the
+credential it is using.
+
+```
+  SERVER                     AUTH         IDENTITY
+▸ argocd-kb.example.io       API key      the server refused or could not be reached
+    401 Unauthorized: token is expired  ·  EXPIRED 3d ago  ·  TLS verification off
+  argocd.example.io          API key      admin
+    no expiry · issued 11mo ago
+  argocd-dl.example.io       SSO          someone@example.com
+    expires in 19m  ·  cannot edit spec, rollback, exec
+```
+
+A fleet session holds several credentials at once. They are not interchangeable
+— one may be a read-only SSO identity, another an admin API key minted a year
+ago — and until something is refused, which one is in play is invisible. Pressing
+`s` and receiving a 403 is a worse way to learn it.
+
+The second line carries only what needs saying: expiry, refused actions, TLS.
+A healthy admin session gets none.
+
+`Enter` opens everything known about one context, from three sources that answer
+three different questions:
+
+```
+CREDENTIAL
+  source            pass:infra/argocd/prod
+  kind              SSO
+  subject           CgVzb21lEgRsZGFw
+  issuer            sso.example.com
+  email             someone@example.com
+  token id          7f9e727a-1ac8-4596-a9d7-5c84b661fe4f
+  issued            2026-08-31 01:39  (40m ago)
+  expires           2026-08-31 02:39  (in 19m)
+
+THE SERVER'S VIEW
+  status            authenticated
+  username          someone@example.com
+  groups            platform, sre
+
+WHAT ARGX MAY DO HERE
+  ✓ read apps    ✓ sync    ✗ edit spec    ✗ rollback    ✓ logs    ✗ exec
+```
+
+- **The argx config** says where the credential comes from — a `pass` entry, a
+  command, `argocd login`. It is the only one of the three that names a place to
+  fix when something is wrong.
+- **The token** says what it claims to be, read locally without verification.
+  Verification needs the server's signing key, which argx does not have; reading
+  unverified is what makes this work for a token the server *rejects*, which is
+  exactly when the question gets asked. The token id is the value that connects
+  a key in hand to an entry in the account's key list — the closest thing an API
+  key has to a name.
+- **The server** says who it thinks the caller is and what they may do. It is
+  the authority: RBAC maps SSO groups onto permissions, and a token's claims do
+  not decide the outcome. `can-i` is asked rather than the policy being read and
+  evaluated here, which would be a second, divergent answer.
+
+Permissions are listed as what is *missing* in the list view and in full in the
+detail. Only the actions argx itself performs are checked — a permission argx
+never exercises is noise.
+
+The credential itself is never rendered, in either view. This describes a token;
+it does not show one.
 
 ## Sync windows
 

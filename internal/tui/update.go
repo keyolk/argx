@@ -175,6 +175,14 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(m.loadAppsCmd(), tickCmd())
 
+	case contextsMsg:
+		m.loading = false
+		m.ctxRows = msg.rows
+		sortContextRows(m.ctxRows)
+		m.ctxLoaded = true
+		m.clampContextCursor()
+		return m, nil
+
 	case scheduledMsg:
 		return m, m.addSchedules(msg)
 
@@ -272,6 +280,23 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.screen = screenApps
 			return m, nil
 		}
+	case "C":
+		// Which credential is in play is a property of the session, not of a
+		// screen, so it is reachable from all of them and toggles back the same
+		// way. Loaded on entry rather than at startup: it is two requests per
+		// server and most sessions never ask.
+		if m.screen == screenContexts {
+			m.pop()
+			m.ctxDetail = false
+			return m, nil
+		}
+		m.push(screenContexts)
+		m.ctxDetail = false
+		m.pagerTop = 0
+		if !m.ctxLoaded {
+			return m, m.loadContextsCmd()
+		}
+		return m, nil
 	case "W":
 		// Available from every screen: a schedule belongs to the session, not
 		// to whatever the reader happens to be looking at, and a key that only
@@ -295,6 +320,15 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pagerTop = 0
 		return m, nil
 	case "esc":
+		// Esc unwinds one level, and a level is not always a screen: the
+		// context view has a detail panel layered over its list. Popping the
+		// whole screen from inside the panel leaves the reader two steps away
+		// from where they were, with the panel still armed for next time.
+		if m.screen == screenContexts && m.ctxDetail {
+			m.ctxDetail = false
+			m.pagerTop = 0
+			return m, nil
+		}
 		m.pop()
 		return m, nil
 	case "/":
@@ -316,6 +350,8 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleWindowsKey(msg)
 	case screenSchedule:
 		return m.handleScheduleKey(msg)
+	case screenContexts:
+		return m.handleContextsKey(msg)
 	case screenDiff, screenManifest, screenLogs, screenEvents, screenHelp:
 		return m.handlePagerKey(msg)
 	}
