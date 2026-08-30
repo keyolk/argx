@@ -73,6 +73,9 @@ type Config struct {
 	// Icons is the configured glyph repertoire; see File.Icons.
 	Icons string
 
+	// DiffTool is the external diff command; see DiffToolCommand.
+	DiffTool []string
+
 	// file is argx's own config, consulted for token sources and defaults.
 	file *File
 }
@@ -193,6 +196,9 @@ func (c *Config) merge(f *File) {
 		c.Browser = f.Browser
 	}
 	c.Icons = f.Icons
+	if len(f.DiffTool) > 0 && len(c.DiffTool) == 0 {
+		c.DiffTool = f.DiffTool
+	}
 
 	known := make(map[string]int, len(c.Contexts))
 	for i, ctx := range c.Contexts {
@@ -402,6 +408,26 @@ func (c *Config) Names() []string {
 // lists — are deliberately not interpreted: such a value is handed to exec as a
 // literal command name and fails visibly, which beats guessing at a syntax
 // nobody agrees on.
+// DiffToolCommand is the external diff command, as argv.
+//
+// ARGX_DIFF_TOOL overrides the config, so a session can try a tool without
+// editing the file — the same escape hatch $BROWSER gives the opener. It is
+// split on spaces, which covers `delta --side-by-side` and stops short of
+// quoting rules; a command that needs those belongs in the config as a list.
+//
+// There is no default. A diff tool is a personal choice and guessing wrong
+// means launching something unexpected that owns the terminal until it exits;
+// argx's own diff is the default, and it is already there.
+func (c *Config) DiffToolCommand() []string {
+	if env := strings.TrimSpace(os.Getenv("ARGX_DIFF_TOOL")); env != "" {
+		return strings.Fields(env)
+	}
+	if c != nil && len(c.DiffTool) > 0 {
+		return c.DiffTool
+	}
+	return nil
+}
+
 func (c *Config) BrowserCommand() string {
 	if c != nil && c.Browser != "" {
 		return c.Browser

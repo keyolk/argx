@@ -66,6 +66,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.pager = msg.lines
 		m.pagerTitle = msg.title
+		m.pagerSides = msg.sides
 		m.pagerTop = 0
 		return m, nil
 

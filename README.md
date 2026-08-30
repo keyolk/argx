@@ -184,6 +184,7 @@ so it stays typeable while the filter prompt is open.
 | `d` | diff (desired vs live) | diff of the marked resources | diff against live | — |
 | `e` | events | — | — | events |
 | `D` | — | diff the whole application | — | — |
+| `s` `D` | in a diff: side by side / your own diff tool ||||
 | `l` `L` | — | pod logs | — | — |
 | `e` | — | a shell in the container | — | — |
 | `n` `N` | next / previous match in a manifest or diff |||
@@ -524,6 +525,68 @@ diff shows a deleted block's opening and closing braces on the same side: the
 depth never balances, and a depth-based skip stops after one line.
 
 ## Diff
+
+### Side by side
+
+`s` in the diff view lays the two states out in columns instead of as a unified
+patch. A unified diff answers "what changed"; two columns answer "changed from
+what to what", which is the question anyone comparing a live manifest to a
+desired one is actually asking.
+
+```
+    "name": "fluent-bit-config",       │     "name": "fluent-bit-config",
+    "namespace": "kube-audit-rest",    │     "namespace": "kube-audit-rest"
+    "resourceVersion": "799780191",    │ ···
+    "uid": "4a2ee9a1-efa9-48b3-b7c1…   │ ···
+```
+
+A removal and the addition that replaces it share a row — the pairing is the
+point. A line that exists on only one side shows `···` opposite it, because an
+empty cell and a cell of spaces look identical.
+
+It needs 100 columns; below that the view stays unified rather than refusing,
+and the status line says so. Headers and hunk markers span the full width: they
+describe the comparison, not either side of it.
+
+The layout runs on whatever the search and the noise filter produced, not on a
+second pass over the manifests — one pipeline, so what you see in two columns
+is what you were just looking at in one. In a real fleet 97–99% of manifest
+lines fit in a column at 140 cells; the ones that do not are base64 blobs that a
+unified diff truncates too.
+
+### Your own diff tool
+
+`D` writes the two documents to files and runs the tool you already read
+fluently.
+
+```yaml
+diff_tool: nvim -d                       # split on spaces
+diff_tool: delta --side-by-side          # or any other
+diff_tool: [difft, --display, inline]    # or an explicit list
+```
+
+`ARGX_DIFF_TOOL` overrides the config for one session, the same escape hatch
+`$BROWSER` gives the opener.
+
+The tool gets the **documents**, not argx's rendering of them. A tool that
+computes its own diff can do things argx's cannot — word-level highlighting,
+syntax awareness, folding, its own navigation — and handing it a finished patch
+would throw all of that away.
+
+The two paths are appended unless the command names `{live}` and `{desired}`,
+which is what every diff tool's own CLI expects and makes the common case one
+word of config. The files are named `<app>.live.yaml` and `<app>.desired.yaml`,
+so the tool's own headers say something recognisable, and are written `0600` —
+a manifest can carry a Secret's data.
+
+There is no default. Guessing wrong means launching something unexpected that
+owns the terminal until it exits, and argx's own diff is already there.
+
+The command must **block** until you are done with it: argx removes the files
+when it exits, so a command that forks and returns leaves the tool reading
+nothing.
+
+
 
 The diff compares Argo CD's **normalized** live state against the target state —
 the same two documents the server itself compares — so argx does not report

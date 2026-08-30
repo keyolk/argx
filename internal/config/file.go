@@ -40,6 +40,18 @@ type File struct {
 	// Browser overrides the URL opener; see Config.BrowserCommand.
 	Browser string `yaml:"browser"`
 
+	// DiffTool is an external diff command, given the two documents as file
+	// paths. Both spellings work:
+	//
+	//	diff_tool: nvim -d                       split on spaces
+	//	diff_tool: [difft, --display, inline]    an explicit list
+	//
+	// The paths are appended unless the command names {live} and {desired},
+	// which is what every diff tool's own CLI expects. The command must block
+	// until the reader is done with it: argx removes the files when it exits,
+	// so a command that forks and returns leaves the tool reading nothing.
+	DiffTool StringList `yaml:"diff_tool"`
+
 	// Icons selects the glyph repertoire: "unicode" (the default), "nerd" for
 	// a Nerd Font terminal, or "ascii". ARGX_ICONS overrides it, so a session
 	// on a terminal without the font can opt out without editing the file.
@@ -115,6 +127,23 @@ type FileContext struct {
 
 	Insecure  bool `yaml:"insecure"`
 	PlainText bool `yaml:"plain_text"`
+}
+
+// StringList is a command accepted either as a list or as one string split on
+// spaces, so the common case stays a single line.
+type StringList []string
+
+func (s *StringList) UnmarshalYAML(value *yaml.Node) error {
+	if value.Kind == yaml.ScalarNode {
+		*s = strings.Fields(value.Value)
+		return nil
+	}
+	var list []string
+	if err := value.Decode(&list); err != nil {
+		return err
+	}
+	*s = list
+	return nil
 }
 
 // TokenSpec describes where one context's credential comes from.

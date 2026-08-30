@@ -842,3 +842,63 @@ contexts:
 		}
 	}
 }
+
+// The diff tool is accepted both ways, so the common case stays one line and a
+// command with awkward arguments is still expressible.
+func TestDiffToolAcceptsBothSpellings(t *testing.T) {
+	cases := []struct {
+		name, yaml string
+		want       []string
+	}{
+		{"a string, split on spaces", "diff_tool: nvim -d\n", []string{"nvim", "-d"}},
+		{"an explicit list", "diff_tool: [difft, --display, inline]\n",
+			[]string{"difft", "--display", "inline"}},
+		{"one word", "diff_tool: delta\n", []string{"delta"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			writeBoth(t, twoContexts, c.yaml)
+			t.Setenv("ARGX_DIFF_TOOL", "")
+
+			cfg, err := Load()
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := cfg.DiffToolCommand()
+			if strings.Join(got, " ") != strings.Join(c.want, " ") {
+				t.Errorf("diff tool = %v, want %v", got, c.want)
+			}
+		})
+	}
+}
+
+// There is no default. Guessing wrong means launching something unexpected that
+// owns the terminal until it exits, and argx's own diff is already there.
+func TestNoDiffToolByDefault(t *testing.T) {
+	writeBoth(t, twoContexts, "")
+	t.Setenv("ARGX_DIFF_TOOL", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.DiffToolCommand(); len(got) != 0 {
+		t.Errorf("diff tool = %v, want none configured", got)
+	}
+}
+
+// The environment overrides the config, so a session can try a tool without
+// editing the file — the same escape hatch $BROWSER gives the opener.
+func TestDiffToolEnvironmentOverridesTheConfig(t *testing.T) {
+	writeBoth(t, twoContexts, "diff_tool: nvim -d\n")
+	t.Setenv("ARGX_DIFF_TOOL", "delta --side-by-side")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := cfg.DiffToolCommand()
+	if strings.Join(got, " ") != "delta --side-by-side" {
+		t.Errorf("diff tool = %v, want the environment's", got)
+	}
+}

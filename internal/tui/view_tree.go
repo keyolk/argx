@@ -155,6 +155,13 @@ func (m *Model) renderPager() string {
 		return m.emptyBody(h, txt)
 	}
 
+	// Two columns, when asked for and when there is room. A narrow terminal
+	// falls back rather than refusing: a cramped unified diff is still a diff,
+	// and a message telling the reader to widen their window is not.
+	if m.screen == screenDiff && m.sxs && m.sxsAvailable() {
+		return padBody(m.renderSideBySide(sideBySide(all), m.pagerTop, h), h)
+	}
+
 	colorize := m.screen == screenDiff
 	lines := make([]string, 0, h)
 	for i := m.pagerTop; i < len(all) && len(lines) < h; i++ {
@@ -238,6 +245,14 @@ func (m *Model) helpLines() []string {
 			{"cluster: sync:", "destination cluster, sync status"},
 			{"health:degraded", "health status"},
 			{"tab", "complete the word under the cursor"},
+		}},
+		{"diffs", []row{
+			{"s", "side by side — the old and new value on one row"},
+			{"", "needs 100 columns; below that it stays unified"},
+			{"D", "hand the two documents to your own diff tool"},
+			{"", "set diff_tool in the config, or $ARGX_DIFF_TOOL"},
+			{"", "it gets the documents, not argx's patch, so a tool"},
+			{"", "that highlights words or folds can do its own work"},
 		}},
 		{"manifests and diffs", []row{
 			{"/", "search — each match is labelled with its JSON path"},

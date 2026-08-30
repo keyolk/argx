@@ -196,6 +196,18 @@ func (m *Model) renderStatus() string {
 			parts = append(parts, m.st.dim.Render(fmt.Sprintf("%d match(es)", n)))
 		}
 		parts = append(parts, m.st.dim.Render(fmt.Sprintf("line %d/%d", min(m.pagerTop+1, total), total)))
+		if m.screen == screenDiff && m.sxs {
+			// Whether the two columns are actually in effect: the layout falls
+			// back on a narrow terminal, and a reader who pressed the key
+			// should not have to work out from the shape of the text whether
+			// it took.
+			if m.sxsAvailable() {
+				parts = append(parts, m.st.info.Render("side by side"))
+			} else {
+				parts = append(parts, m.st.warn.Render(fmt.Sprintf(
+					"side by side needs %d columns (s)", sxsMinWidth)))
+			}
+		}
 		if n := m.noiseHidden(); n > 0 {
 			// An absent field should never be a mystery: the count says how
 			// much is hidden, and M is how to see it.
@@ -319,6 +331,11 @@ func (m *Model) renderFooter() string {
 		hints = []string{"esc back", "q quit"}
 	default:
 		hints = []string{"j/k scroll", "/ search", "n/N match", "M noise", "esc back", "q quit"}
+		if m.screen == screenDiff {
+			// The diff view has two more, and they are the ones nobody guesses.
+			hints = []string{"j/k scroll", "s side-by-side", "D diff tool",
+				"/ search", "n/N match", "M noise", "esc back", "q quit"}
+		}
 	}
 
 	// Pending syncs lead, on every screen. They exist only in this process and

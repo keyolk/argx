@@ -39,6 +39,10 @@ type pagerMsg struct {
 	title string
 	lines []string
 	err   error
+	// sides carries the two documents a diff was computed from, so an external
+	// diff tool can be handed the originals rather than argx's rendering of
+	// them. Nil for anything that is not a diff.
+	sides *diffSides
 }
 
 type actionMsg struct {
@@ -118,6 +122,7 @@ func (m *Model) loadAppDiffCmd(app argocd.Application) tea.Cmd {
 			id:    id,
 			title: "diff · " + app.Name(),
 			lines: renderDiff(items, nil),
+			sides: collectSides(items, nil, app.Name()),
 		}
 	}
 }
@@ -147,7 +152,11 @@ func (m *Model) loadResourceDiffCmd(app argocd.Application, nodes []argocd.Node)
 		if err != nil {
 			return pagerMsg{id: id, err: err}
 		}
-		return pagerMsg{id: id, title: title, lines: renderDiff(items, want)}
+		return pagerMsg{
+			id: id, title: title,
+			lines: renderDiff(items, want),
+			sides: collectSides(items, want, app.Name()),
+		}
 	}
 }
 
