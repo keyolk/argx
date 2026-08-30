@@ -194,6 +194,16 @@ type Model struct {
 	pagerTop   int
 	pagerTitle string
 	pagerFilt  string
+	// pagerSides is what a diff was computed from, kept so an external diff
+	// tool can be handed the two documents rather than argx's rendering. Nil
+	// for anything that is not a diff.
+	pagerSides *diffSides
+
+	// sxs lays the diff out in two columns instead of as a unified patch. Off
+	// by default: a unified diff is what people expect from the word "diff",
+	// and two columns need a wide terminal to be worth it.
+	sxs bool
+
 	// showNoise reveals the bookkeeping fields a manifest carries — see
 	// noiseKeys. Off by default: they are 39% of a real pod manifest and bury
 	// everything else.

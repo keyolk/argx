@@ -4,6 +4,8 @@ package tui
 // and the modal overlays. The tab-level dispatch lives in update.go.
 
 import (
+	"fmt"
+
 	tea "github.com/charmbracelet/bubbletea"
 )
 
@@ -209,6 +211,34 @@ func (m *Model) handlePagerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, m.jumpToHit(1)
 	case "N":
 		return m, m.jumpToHit(-1)
+	case "s":
+		// Side by side. Only in the diff view: a manifest or a log has no two
+		// sides to lay out, and a key that silently does nothing on three
+		// screens out of four is a key people stop trusting.
+		if m.screen != screenDiff {
+			return m, nil
+		}
+		m.sxs = !m.sxs
+		m.pagerTop = 0
+		switch {
+		case !m.sxs:
+			m.setToast("unified diff")
+		case m.sxsAvailable():
+			m.setToast("side by side")
+		default:
+			// Saying why beats appearing to ignore the key.
+			m.setToast(fmt.Sprintf(
+				"side by side needs %d columns; this terminal has %d — showing unified",
+				sxsMinWidth, m.width))
+		}
+		return m, nil
+	case "D":
+		// The external tool. Only where there is something to hand it: `D` on a
+		// log view would launch a diff of nothing.
+		if m.screen != screenDiff {
+			return m, nil
+		}
+		return m, m.diffToolCmd()
 	case "M":
 		// The bookkeeping fields, back on. They are hidden by default because
 		// they bury everything else, not because they never matter.
