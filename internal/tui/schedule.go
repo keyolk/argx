@@ -32,7 +32,13 @@ type scheduleState int
 const (
 	// scheduleWaiting is the normal state: the window has not opened yet.
 	scheduleWaiting scheduleState = iota
+	// scheduleRunning is the moment the sync request is in flight.
 	scheduleRunning
+	// scheduleSyncing is after Argo CD accepted the request and while the sync
+	// itself runs. Accepting a request and completing a sync are different
+	// events, and a row that stopped at the first would report success for a
+	// sync that went on to fail.
+	scheduleSyncing
 	scheduleDone
 	scheduleFailed
 	// scheduleCancelled covers both the user cancelling and argx declining to
@@ -44,8 +50,10 @@ func (s scheduleState) String() string {
 	switch s {
 	case scheduleRunning:
 		return "running"
+	case scheduleSyncing:
+		return "syncing"
 	case scheduleDone:
-		return "done"
+		return "synced"
 	case scheduleFailed:
 		return "failed"
 	case scheduleCancelled:
@@ -89,6 +97,11 @@ type scheduled struct {
 	reason string
 	// ranAt records when it finished, so the list says what happened and when.
 	ranAt time.Time
+	// startedAt is when Argo CD accepted the sync. The operation that follows
+	// is identified by it: an operation that started before argx asked belongs
+	// to somebody else, and reporting its outcome as this schedule's would
+	// attribute a stranger's failure to a sync argx ran.
+	startedAt time.Time
 }
 
 // due reports whether this schedule's time has come.

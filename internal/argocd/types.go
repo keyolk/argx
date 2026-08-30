@@ -188,7 +188,7 @@ func (a *Application) RepoURL() string {
 }
 
 // Degraded reports whether the app is in a state a human should look at:
-// unhealthy, failed sync operation, or an error condition.
+// unhealthy, a sync failure that still stands, or an error condition.
 func (a *Application) Degraded() bool {
 	switch a.Status.Health.Status {
 	case "Degraded", "Missing", "Unknown":
@@ -197,6 +197,16 @@ func (a *Application) Degraded() bool {
 	if op := a.Status.OperationState; op != nil {
 		switch op.Phase {
 		case "Failed", "Error":
+			// A failed sync that the application has since recovered from is
+			// history, not a fault. Argo CD keeps the failed operation on the
+			// application until the next one replaces it, so an app that was
+			// fixed by hand — or by a later reconcile — would stay flagged for
+			// as long as nothing synced it again. Two applications in a 2,976
+			// fleet were red this way, one from ten days earlier. Red has to
+			// mean "look at this now", or it stops meaning anything.
+			if a.Status.Sync.Status == "Synced" && a.Status.Health.Status == "Healthy" {
+				break
+			}
 			return true
 		}
 	}
