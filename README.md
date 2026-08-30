@@ -183,6 +183,7 @@ so it stays typeable while the filter prompt is open.
 | `o` | **open in browser** | open the application in browser | ← | ← |
 | `d` | diff (desired vs live) | diff of the marked resources | diff against live | — |
 | `e` | events | — | — | events |
+| `D` | — | diff the whole application | — | — |
 | `l` `L` | — | pod logs | — | — |
 | `e` | — | a shell in the container | — | — |
 | `n` `N` | next / previous match in a manifest or diff |||
@@ -368,11 +369,15 @@ Overlapping context windows are merged, so no line is printed twice under a
 label describing a different match.
 
 **managedFields is hidden by default**, along with the annotation `kubectl
-apply` writes. Measured on a real pod manifest, those are 39% of the document —
-enough to bury every real match. `M` shows them, and the status line says how
-many lines are hidden, so an absent field is never a mystery. The filter applies
-to manifests and diffs only: a log line beginning with `managedFields` is
-content, not a field.
+apply` writes. Measured on real objects those are 39% of a pod manifest and 66%
+of a whole-application diff — enough to bury every real match. `M` shows them,
+and the status line says how many lines are hidden, so an absent field is never
+a mystery. The filter applies to manifests and diffs only: a log line beginning
+with `managedFields` is content, not a field.
+
+Block boundaries are found by indentation rather than brace depth, because a
+diff shows a deleted block's opening and closing braces on the same side: the
+depth never balances, and a depth-based skip stops after one line.
 
 ## Diff
 

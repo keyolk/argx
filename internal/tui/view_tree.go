@@ -5,6 +5,7 @@ package tui
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -24,8 +25,11 @@ func (m *Model) renderTree() string {
 		return m.emptyBody(h, txt)
 	}
 
+	kindW := m.treeKindWidth()
+
 	lines := make([]string, 0, h)
-	lines = append(lines, m.st.header.Render("  H  KIND/NAME"))
+	lines = append(lines, m.st.header.Render(truncate(
+		"  H  "+padRight("KIND", kindW)+" NAME", m.width)))
 
 	// Indentation is suppressed while a filter is active: the connectors would
 	// draw branches to parents the filter removed, which reads as a broken tree.
@@ -58,20 +62,19 @@ func (m *Model) renderTree() string {
 			}
 		}
 
-		// With icons on, the kind is shown as a symbol rather than spelled out:
-		// the shape is what a reader scans for, and the word costs the width
-		// that the name needs. Without icons the word is the only signal, so it
-		// stays.
-		var label string
+		// The kind is a column of its own, so every name starts at the same
+		// place and the kinds line up to be scanned down. The icon rides in
+		// front of the word rather than replacing it: the shape is quick to
+		// recognise once you know it, and the word is what tells you which
+		// shape you are looking at.
 		nameStyle := lipgloss.NewStyle()
 		if cur {
 			nameStyle = m.st.selected
 		}
-		if icon := m.gl.kindIcon(n.Kind); icon != "" {
-			label = m.st.kindStyle(n.Kind).Render(icon) + " " + nameStyle.Render(n.Name)
-		} else {
-			label = m.st.dim.Render(n.Kind+" ") + nameStyle.Render(n.Name)
-		}
+		kindCell := m.gl.prefix(m.gl.kindIcon(n.Kind)) + n.Kind
+		label := m.st.kindStyle(n.Kind).Render(
+			padRight(truncate(kindCell, kindW), kindW)) +
+			" " + prefix + nameStyle.Render(n.Name)
 
 		// Trailing detail: the one fact that matters per kind, not every info
 		// entry Argo CD attaches.
@@ -91,11 +94,51 @@ func (m *Model) renderTree() string {
 			detail = " " + m.st.dim.Render(detail)
 		}
 
-		line := cursor + mark + " " + health + " " + prefix + label + detail
+		line := cursor + mark + " " + health + " " + label + detail
 		lines = append(lines, truncate(line, m.width))
 	}
 	return padBody(lines, h)
 }
+
+// treeKindWidth sizes the kind column from the kinds actually in the tree.
+//
+// Computed rather than fixed: a tree of Pods and ReplicaSets should not reserve
+// the width of CustomResourceDefinition, and one that does contain a long kind
+// should not truncate it into ambiguity.
+func (m *Model) treeKindWidth() int {
+	if len(m.tree) == 0 {
+		return 0
+	}
+
+	widths := make([]int, 0, len(m.tree))
+	for _, row := range m.tree {
+		cell := m.gl.prefix(m.gl.kindIcon(row.Node.Kind)) + row.Node.Kind
+		widths = append(widths, lipgloss.Width(cell))
+	}
+	sort.Ints(widths)
+
+	// The 90th percentile rather than the longest: one
+	// ValidatingWebhookConfiguration in a tree of Pods would otherwise pad
+	// every row out by seventeen columns for a kind that appears once. The
+	// outliers truncate, which is the trade a fixed column is for.
+	w := widths[len(widths)*9/10]
+	if w > maxTreeKindCol {
+		w = maxTreeKindCol
+	}
+	// On a narrow terminal the name matters more than the kind, so the column
+	// gives way rather than squeezing the name out.
+	if max := m.width / 4; w > max {
+		w = max
+	}
+	return w
+}
+
+// maxTreeKindCol caps the kind column. Long enough for StatefulSet and its
+// icon; past that the kinds are rare enough that truncation costs less than the
+// width would. There is no floor: a tree of Pods and ReplicaSets should render
+// a column exactly wide enough for "ReplicaSet", not one padded to a size
+// nothing in it needs.
+const maxTreeKindCol = 22
 
 // renderPager renders diff / manifest / logs / events with diff-aware coloring.
 func (m *Model) renderPager() string {
@@ -179,6 +222,7 @@ func (m *Model) helpLines() []string {
 		{"RESOURCES tab", []row{
 			{"enter", "live manifest"},
 			{"d", "diff of the marked resources"},
+			{"D", "diff of the whole application"},
 			{"l / L", "pod logs"},
 			{"e", "a shell in the container, through Argo CD"},
 			{"", "a multi-container pod asks which one first"},

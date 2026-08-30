@@ -317,3 +317,107 @@ func TestSearchOutputFitsTheTerminal(t *testing.T) {
 		}
 	}
 }
+
+// A diff's lines carry a marker and, for a deleted block, only one side of the
+// braces — so brace depth never balances and a depth-based skip ends on its
+// first line. Measured on a real application diff that left 1761 of 4828 lines
+// as fieldsV1 noise while reporting 44 hidden.
+func TestNoiseIsHiddenInDiffsToo(t *testing.T) {
+	// A deleted managedFields block, exactly as a diff renders one.
+	diff := []string{
+		`=== ConfigMap kube-system/istio`,
+		` {`,
+		`   "metadata": {`,
+		`     "name": "istio",`,
+		`-    "managedFields": [`,
+		`-      {`,
+		`-        "apiVersion": "v1",`,
+		`-        "fieldsType": "FieldsV1",`,
+		`-        "fieldsV1": {`,
+		`-          "f:data": {`,
+		`-            "f:mesh": {}`,
+		`-          }`,
+		`-        },`,
+		`-        "manager": "argocd-controller"`,
+		`-      }`,
+		`-    ],`,
+		`     "namespace": "kube-system"`,
+		`   }`,
+		` }`,
+	}
+	m := pagerModel(t, diff)
+	m.screen = screenDiff
+
+	shown := strings.Join(m.searchPager().lines, "\n")
+	for _, gone := range []string{"managedFields", "fieldsV1", "f:mesh", "argocd-controller"} {
+		if strings.Contains(shown, gone) {
+			t.Errorf("%q survived the filter:\n%s", gone, shown)
+		}
+	}
+	// The block's closing bracket goes with it: an orphan `],` under nothing is
+	// worse than either showing the block or hiding it.
+	for _, l := range strings.Split(shown, "\n") {
+		if strings.TrimSpace(strings.TrimLeft(l, "+- ")) == "]," {
+			t.Errorf("an orphan closing bracket was left behind:\n%s", shown)
+		}
+	}
+	// And everything around it survives.
+	for _, want := range []string{`"name": "istio"`, `"namespace": "kube-system"`} {
+		if !strings.Contains(shown, want) {
+			t.Errorf("the skip consumed too much — %q is missing:\n%s", want, shown)
+		}
+	}
+}
+
+// The marker occupies column one, so indentation is measured after it —
+// otherwise every deleted line looks one column deeper than its added
+// counterpart and the block boundaries move.
+func TestDiffBodyMeasuresAfterTheMarker(t *testing.T) {
+	tests := []struct {
+		raw        string
+		wantBody   string
+		wantIndent int
+	}{
+		{`-    "key": "v"`, `    "key": "v"`, 4},
+		{`+    "key": "v"`, `    "key": "v"`, 4},
+		{`     "key": "v"`, `    "key": "v"`, 4},
+		{`    "key": "v"`, `   "key": "v"`, 3}, // no marker: first char is content
+		{``, ``, 0},
+	}
+	for _, tt := range tests {
+		body, indent := diffBody(tt.raw)
+		if body != tt.wantBody || indent != tt.wantIndent {
+			t.Errorf("diffBody(%q) = (%q, %d), want (%q, %d)",
+				tt.raw, body, indent, tt.wantBody, tt.wantIndent)
+		}
+	}
+}
+
+// A block whose contents are added rather than deleted must hide the same way:
+// the filter is about what the field is, not which side of the diff it is on.
+func TestNoiseIsHiddenOnEitherSideOfADiff(t *testing.T) {
+	for _, marker := range []string{"+", "-", " "} {
+		diff := []string{
+			` {`,
+			`   "metadata": {`,
+			marker + `    "managedFields": [`,
+			marker + `      {`,
+			marker + `        "manager": "kubelet"`,
+			marker + `      }`,
+			marker + `    ],`,
+			`     "name": "web"`,
+			`   }`,
+			` }`,
+		}
+		m := pagerModel(t, diff)
+		m.screen = screenDiff
+
+		shown := strings.Join(m.searchPager().lines, "\n")
+		if strings.Contains(shown, "kubelet") {
+			t.Errorf("marker %q: the block survived:\n%s", marker, shown)
+		}
+		if !strings.Contains(shown, `"name": "web"`) {
+			t.Errorf("marker %q: the skip consumed too much:\n%s", marker, shown)
+		}
+	}
+}

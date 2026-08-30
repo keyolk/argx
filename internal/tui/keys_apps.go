@@ -163,6 +163,7 @@ func (m *Model) handleTreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.loadManifestCmd(*m.app, *n)
 		}
 	case "d":
+		// The marked resources, or the one under the cursor.
 		if m.app == nil {
 			return m, nil
 		}
@@ -173,6 +174,17 @@ func (m *Model) handleTreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.push(screenDiff)
 		m.pager, m.pagerTitle = nil, "diff"
 		return m, m.loadResourceDiffCmd(*m.app, nodes)
+	case "D":
+		// The whole application, regardless of what is marked. "What is
+		// different about this application" is the question you arrive at the
+		// resource tree with, and it had no key: d narrowed to a selection, and
+		// leaving the view to ask from the list lost your place in it.
+		if m.app == nil {
+			return m, nil
+		}
+		m.push(screenDiff)
+		m.pager, m.pagerTitle = nil, "diff · "+m.app.Name()
+		return m, m.loadAppDiffCmd(*m.app)
 	case "L", "l":
 		if n := m.currentNode(); n != nil {
 			return m, m.openContainerPicker(*n, containerForLogs)

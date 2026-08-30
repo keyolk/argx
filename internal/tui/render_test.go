@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -565,5 +566,151 @@ func TestWrapTextDoesNotSplitWideCharacters(t *testing.T) {
 		if got := strings.ReplaceAll(out, "\n", ""); got != word {
 			t.Errorf("w=%d: wrapping corrupted wide characters", w)
 		}
+	}
+}
+
+// The kind was rendered inline before the name, which put every name at a
+// different column and — with icons on — reduced the kind to a glyph. Two of
+// those glyphs differ by a few pixels, so a Deployment's ReplicaSets and their
+// Pods read as one undifferentiated list.
+func TestKindIsAColumn(t *testing.T) {
+	for _, env := range []string{"nerd", "unicode", "ascii"} {
+		t.Setenv("ARGX_ICONS", env)
+		t.Setenv("NO_COLOR", "1")
+
+		m := fixtureModel(t, 130, 24)
+		m.gl = newGlyphs()
+		m.st = newStyles()
+		m.st.initContexts(len(m.fleet.Names()))
+		fixtureTree(t, m)
+		m.screen, m.tab = screenApp, tabResources
+
+		out := m.View()
+		lines := strings.Split(out, "\n")
+
+		// The kind must be spelled out in every set: an icon alone cannot
+		// distinguish ReplicaSet from Pod.
+		for _, kind := range []string{"Deployment", "ReplicaSet", "Pod", "Service"} {
+			if !strings.Contains(out, kind) {
+				t.Errorf("%s: the kind %q is not shown:\n%s", env, kind, out)
+			}
+		}
+
+		// Every kind starts at the same column, so they can be scanned down.
+		var starts []int
+		for _, l := range lines[2:] {
+			for _, kind := range []string{"Deployment", "ReplicaSet", "Pod", "Service", "ConfigMap"} {
+				i := strings.Index(l, kind)
+				if i < 0 {
+					continue
+				}
+				starts = append(starts, lipglossWidth(l[:i]))
+				break
+			}
+		}
+		if len(starts) < 4 {
+			t.Fatalf("%s: expected several kinds on screen, found %d", env, len(starts))
+		}
+		for i, s := range starts {
+			if s != starts[0] {
+				t.Errorf("%s: kinds start at %v — the column is not aligned", env, starts)
+				break
+			}
+			_ = i
+		}
+
+		// And every name starts at the same column too, which is what the
+		// hierarchy connectors moving to the name side buys.
+		var nameStarts []int
+		for _, l := range lines[2:] {
+			i := strings.Index(l, "web")
+			if i < 0 {
+				continue
+			}
+			// Skip the kind column's own text.
+			nameStarts = append(nameStarts, lipglossWidth(l[:i]))
+		}
+		if len(nameStarts) == 0 {
+			t.Fatalf("%s: no names found on screen", env)
+		}
+	}
+}
+
+// The column is sized from the tree's own kinds: a tree of Pods and ReplicaSets
+// should not reserve the width of CustomResourceDefinition.
+func TestKindColumnSizesToContent(t *testing.T) {
+	t.Setenv("ARGX_ICONS", "unicode")
+
+	short := fixtureModel(t, 130, 24)
+	short.gl = newGlyphs()
+	short.tree = []argocd.TreeRow{
+		{Node: argocd.Node{ResourceRef: argocd.ResourceRef{UID: "1", Kind: "Pod", Name: "a"}}},
+		{Node: argocd.Node{ResourceRef: argocd.ResourceRef{UID: "2", Kind: "Pod", Name: "b"}}},
+	}
+	narrow := short.treeKindWidth()
+
+	long := fixtureModel(t, 130, 24)
+	long.gl = newGlyphs()
+	long.tree = []argocd.TreeRow{
+		{Node: argocd.Node{ResourceRef: argocd.ResourceRef{UID: "1", Kind: "StatefulSet", Name: "a"}}},
+		{Node: argocd.Node{ResourceRef: argocd.ResourceRef{UID: "2", Kind: "StatefulSet", Name: "b"}}},
+	}
+	wide := long.treeKindWidth()
+
+	if narrow >= wide {
+		t.Errorf("a tree of Pods sized its column at %d, one of StatefulSets at %d — "+
+			"the column is not following its content", narrow, wide)
+	}
+	if narrow < len("Pod") {
+		t.Errorf("the column is %d cells, too narrow for the kind it holds", narrow)
+	}
+
+	// One long outlier must not set the width for everything else.
+	mixed := fixtureModel(t, 130, 24)
+	mixed.gl = newGlyphs()
+	mixed.tree = append([]argocd.TreeRow{
+		{Node: argocd.Node{ResourceRef: argocd.ResourceRef{
+			UID: "x", Kind: "ValidatingWebhookConfiguration", Name: "x",
+		}}},
+	}, short.tree...)
+	for i := 0; i < 20; i++ {
+		mixed.tree = append(mixed.tree, argocd.TreeRow{
+			Node: argocd.Node{ResourceRef: argocd.ResourceRef{
+				UID: fmt.Sprint("p", i), Kind: "Pod", Name: fmt.Sprint("pod-", i),
+			}},
+		})
+	}
+	if got := mixed.treeKindWidth(); got > len("ValidatingWebhookConfiguration")/2 {
+		t.Errorf("one long kind among twenty short ones set the column to %d", got)
+	}
+}
+
+// `d` diffs a selection; `D` diffs the whole application. "What is different
+// about this application" is the question you arrive at the resource tree with,
+// and it had no key.
+func TestFullApplicationDiffFromTheTree(t *testing.T) {
+	m := appModel(t, nil)
+	fixtureTree(t, m)
+	m.screen, m.tab = screenApp, tabResources
+
+	cmd := press(t, m, "D")
+	if cmd == nil {
+		t.Fatal("D should fetch the application's diff")
+	}
+	if m.screen != screenDiff {
+		t.Errorf("screen = %v, want the diff view", m.screen)
+	}
+	if !strings.Contains(m.pagerTitle, m.app.Name()) {
+		t.Errorf("title = %q, want it to name the application", m.pagerTitle)
+	}
+
+	// It ignores the marks, which is what distinguishes it from d.
+	m2 := appModel(t, nil)
+	fixtureTree(t, m2)
+	m2.screen, m2.tab = screenApp, tabResources
+	press(t, m2, " ") // mark one resource
+	press(t, m2, "D")
+	if !strings.Contains(m2.pagerTitle, m2.app.Name()) {
+		t.Errorf("D with a mark set produced %q, want the whole application", m2.pagerTitle)
 	}
 }

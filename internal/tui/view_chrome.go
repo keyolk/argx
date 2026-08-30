@@ -245,7 +245,7 @@ func (m *Model) renderFooter() string {
 		case tabDetails:
 			hints = []string{"enter edit", "[ ] tabs", "s sync", "w windows", "e events", "esc back", "q quit"}
 		default:
-			hints = []string{"space mark", "enter manifest", "d diff", "l logs", "e shell", "s sync", "w windows", "esc back", "q quit"}
+			hints = []string{"space mark", "enter manifest", "d diff", "D app diff", "l logs", "e shell", "s sync", "w windows", "esc back", "q quit"}
 		}
 	case screenAppSets:
 		hints = []string{"enter apps", "y spec", "o browser", "S applications", "/ filter", "? help", "q quit"}

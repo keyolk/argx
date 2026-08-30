@@ -185,43 +185,77 @@ var noiseKeys = map[string]bool{
 func hideNoise(lines []string) (out []string, hidden int) {
 	out = make([]string, 0, len(lines))
 
-	// depth tracks brace nesting; skipAt is the depth a hidden block started
-	// at, or -1 when nothing is being skipped.
-	depth, skipAt := 0, -1
+	// skipIndent is the indentation of the line that opened the hidden block,
+	// or -1 when nothing is being skipped. Indentation rather than brace depth:
+	// a diff shows a deleted block's opens and closes on the same side, so the
+	// depth never balances and a depth-based skip ends on its first line.
+	skipIndent := -1
 
 	for _, raw := range lines {
-		body := raw
-		if len(body) > 0 && (body[0] == '+' || body[0] == '-' || body[0] == ' ') {
-			body = body[1:]
-		}
+		body, indent := diffBody(raw)
 		t := strings.TrimSpace(body)
-		delta := strings.Count(t, "{") + strings.Count(t, "[") -
-			strings.Count(t, "}") - strings.Count(t, "]")
 
-		if skipAt >= 0 {
-			hidden++
-			depth += delta
-			if depth <= skipAt {
-				skipAt = -1
+		if skipIndent >= 0 {
+			// The block continues while its lines are indented further than
+			// the key that opened it. A blank line inside it is part of it.
+			if t == "" || indent > skipIndent {
+				hidden++
+				continue
 			}
-			continue
+			// The closing bracket sits at the opening key's own indentation, so
+			// it would otherwise survive as an orphan `],` with nothing above
+			// it. It is the last line of the block being hidden.
+			if indent == skipIndent && isCloser(t) {
+				hidden++
+				skipIndent = -1
+				continue
+			}
+			skipIndent = -1
 		}
 
-		if key, _, _ := parseJSONLine(t); noiseKeys[key] {
-			hidden++
-			// A single-line entry closes on the same line, so the skip ends
-			// immediately; a block runs until the depth comes back.
-			if delta > 0 {
-				skipAt = depth
+		if t != "" {
+			if key, _, _ := parseJSONLine(t); noiseKeys[key] {
+				hidden++
+				// A value that opens a block starts a skip; a single-line entry
+				// closes on its own line and does not.
+				if strings.HasSuffix(t, "{") || strings.HasSuffix(t, "[") {
+					skipIndent = indent
+				}
+				continue
 			}
-			depth += delta
-			continue
 		}
 
 		out = append(out, raw)
-		depth += delta
 	}
 	return out, hidden
+}
+
+// isCloser reports whether a line is only a closing bracket, with or without
+// the comma that follows it in a list.
+func isCloser(t string) bool {
+	switch t {
+	case "}", "]", "},", "],":
+		return true
+	}
+	return false
+}
+
+// diffBody strips a diff line's marker and reports the content's indentation.
+//
+// The marker occupies column one, so the indentation that follows is what
+// describes the structure — measuring from the raw line would make every
+// deleted line look one column deeper than its added counterpart.
+func diffBody(raw string) (body string, indent int) {
+	body = raw
+	if len(body) > 0 && (body[0] == '+' || body[0] == '-' || body[0] == ' ') {
+		body = body[1:]
+	}
+	for i, c := range body {
+		if c != ' ' && c != '\t' {
+			return body, i
+		}
+	}
+	return body, len(body)
 }
 
 // searchPager runs the pager's search.
