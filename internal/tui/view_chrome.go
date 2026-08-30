@@ -30,9 +30,7 @@ func (m *Model) renderStatus() string {
 			parts = append(parts,
 				m.st.err.Render("unreachable: "+strings.Join(names, ", ")+" (E)"))
 		}
-		if n := len(m.appMarks); n > 0 {
-			parts = append(parts, m.st.mark.Render(fmt.Sprintf("%d marked", n)))
-		}
+		parts = append(parts, m.markParts(m.appScope())...)
 		if n := m.pendingSchedules(); n > 0 {
 			// Carried on the root screen because a scheduled sync is invisible
 			// otherwise, and it disappears when argx exits — the reader needs a
@@ -83,9 +81,7 @@ func (m *Model) renderStatus() string {
 		switch m.tab {
 		case tabResources:
 			parts = append(parts, m.st.dim.Render(fmt.Sprintf("%d/%d resources", len(m.treeRows), len(m.tree))))
-			if n := len(m.treeMarks); n > 0 {
-				parts = append(parts, m.st.mark.Render(fmt.Sprintf("%d marked", n)))
-			}
+			parts = append(parts, m.markParts(m.treeScope())...)
 		case tabHistory:
 			parts = append(parts, m.st.dim.Render(fmt.Sprintf("%d deployments", len(m.histRows()))))
 		case tabDetails:
@@ -233,6 +229,37 @@ func (m *Model) renderStatus() string {
 	return truncate(strings.Join(parts, m.st.dim.Render(m.gl.sep)), m.width)
 }
 
+// markParts is the selection's readout: how many, how many the filter is
+// hiding, and whether a range is being drawn.
+//
+// The hidden count is the one that has to be said out loud. Marks the filter
+// does not show are still targets of the next sync, and a reader who cannot see
+// them has no way to know the selection is wider than the screen.
+func (m *Model) markParts(scope markScope) []string {
+	var parts []string
+
+	if n := len(scope.marks); n > 0 {
+		label := fmt.Sprintf("%d marked", n)
+		if h := scope.hiddenCount(); h > 0 {
+			label += fmt.Sprintf(" (%d not shown)", h)
+			parts = append(parts, m.st.warn.Render(label))
+		} else {
+			parts = append(parts, m.st.mark.Render(label))
+		}
+	}
+	if m.markedOnly {
+		// Otherwise a list narrowed to its own marks reads as a list that lost
+		// most of its rows.
+		parts = append(parts, m.st.info.Render("marked only (m)"))
+	}
+	if m.visualFrom >= 0 {
+		from, to, _ := m.visualRange(m.listCursor())
+		parts = append(parts, m.st.accent.Render(
+			fmt.Sprintf("range: %d rows — v to take, esc to cancel", to-from+1)))
+	}
+	return parts
+}
+
 // joinCandidates renders a completion list, bounded so it cannot push the rest
 // of the status line off screen.
 func joinCandidates(cands []string, budget int) string {
@@ -303,7 +330,13 @@ func (m *Model) renderFooter() string {
 	var hints []string
 	switch m.screen {
 	case screenApps:
-		hints = []string{"space mark", "o browser", "d diff", "s sync", "S appsets", "C contexts", "/ filter", "? help", "q quit"}
+		// "space mark" alone taught marking one row and nothing else, so the
+		// mark keys sat undiscovered behind a key nobody had reason to press.
+		// They lead now, because every destructive action here takes its
+		// targets from the selection.
+		hints = []string{"space/a/A mark", "v range", "enter open", "s sync",
+			"d diff", "o browser", "W schedules", "S appsets", "C contexts",
+			"/ filter", "? help", "q quit"}
 	case screenApp:
 		switch m.tab {
 		case tabHistory:
@@ -311,7 +344,9 @@ func (m *Model) renderFooter() string {
 		case tabDetails:
 			hints = []string{"enter edit", "[ ] tabs", m.syncHint(), "w windows", "e events", "esc back", "q quit"}
 		default:
-			hints = []string{"space mark", "enter manifest", "d diff", "D app diff", "l logs", "e shell", m.syncHint(), "w windows", "esc back", "q quit"}
+			hints = []string{"space/a/A mark", "v range", "enter manifest",
+				"d diff", "D app diff", "l logs", "e shell", m.syncHint(),
+				"w windows", "esc back", "q quit"}
 		}
 	case screenAppSets:
 		hints = []string{"enter apps", "y spec", "o browser", "S applications", "/ filter", "? help", "q quit"}
@@ -345,15 +380,26 @@ func (m *Model) renderFooter() string {
 	if n := m.pendingSchedules(); n > 0 && m.screen != screenSchedule {
 		hints = append([]string{fmt.Sprintf("W %d scheduled", n)}, hints...)
 	}
+	// A range in progress replaces the hints entirely. It is a mode, and the
+	// two keys that end it are the only ones worth naming while it is on.
+	if m.visualFrom >= 0 {
+		hints = []string{"move to extend", "v take the range", "esc cancel"}
+	}
 
 	// Drop hints from the right until the line fits, so a narrow terminal keeps
 	// the most important ones rather than wrapping.
 	//
-	// Except the last one. Every hint list ends in "q quit", and a footer that
-	// drops the way out to make room for "d diff" has cut the wrong thing —
-	// someone who cannot find the exit kills the terminal window.
-	tail := hints[len(hints)-1]
-	body := hints[:len(hints)-1]
+	// Except the last ones. Every list ends in "q quit", and most end in
+	// "? help" before it; a footer that drops either to make room for "d diff"
+	// has cut the wrong thing. The exit is how you leave, and the help is the
+	// only place the keys that did not fit are written down — dropping it
+	// exactly when the footer is too small to list them is the worst moment.
+	keep := 1
+	if len(hints) > 1 && hints[len(hints)-2] == "? help" {
+		keep = 2
+	}
+	tail := strings.Join(hints[len(hints)-keep:], "  ")
+	body := hints[:len(hints)-keep]
 	for len(body) > 0 {
 		s := strings.Join(append(append([]string{}, body...), tail), "  ")
 		if lipgloss.Width(s) <= m.width {

@@ -111,9 +111,15 @@ func (m *Model) applyAppFilter() {
 	}
 	m.appRows = m.appRows[:0]
 	for i := range m.apps {
-		if m.appFilter.match(&m.apps[i]) {
-			m.appRows = append(m.appRows, i)
+		if !m.appFilter.match(&m.apps[i]) {
+			continue
 		}
+		// The marked-only view is a filter like any other, applied last: it
+		// narrows what the query already found rather than replacing it.
+		if m.markedOnly && !m.appMarks[m.apps[i].Key()] {
+			continue
+		}
+		m.appRows = append(m.appRows, i)
 	}
 	// Keep the cursor on the same application across a filter change when it
 	// survived the filter; jumping to row 0 loses the user's place.
@@ -136,9 +142,13 @@ func (m *Model) applyTreeFilter() {
 	}
 	m.treeRows = m.treeRows[:0]
 	for i := range m.tree {
-		if m.treeFilt.match(m.tree[i].Node) {
-			m.treeRows = append(m.treeRows, i)
+		if !m.treeFilt.match(m.tree[i].Node) {
+			continue
 		}
+		if m.markedOnly && !m.treeMarks[m.tree[i].Node.UID] {
+			continue
+		}
+		m.treeRows = append(m.treeRows, i)
 	}
 	m.treeCur = 0
 	if prev != "" {
@@ -184,30 +194,6 @@ func (m *Model) pruneTreeMarks() {
 			delete(m.treeMarks, uid)
 		}
 	}
-}
-
-func (m *Model) allFilteredAppsMarked() bool {
-	if len(m.appRows) == 0 {
-		return false
-	}
-	for _, i := range m.appRows {
-		if !m.appMarks[m.apps[i].Key()] {
-			return false
-		}
-	}
-	return true
-}
-
-func (m *Model) allFilteredNodesMarked() bool {
-	if len(m.treeRows) == 0 {
-		return false
-	}
-	for _, i := range m.treeRows {
-		if !m.treeMarks[m.tree[i].Node.UID] {
-			return false
-		}
-	}
-	return true
 }
 
 func (m *Model) showError(err error) {

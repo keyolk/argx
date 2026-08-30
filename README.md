@@ -155,15 +155,51 @@ entirely — tabs are not stack levels.
 
 ## Multi-select
 
-`Space` marks the row under the cursor and advances, so marking a run is one key
-repeated. `a` marks or clears every **filtered** row — with a filter active,
-"all" never reaches applications you cannot see.
+Marking is how every destructive action chooses its targets, so the selection
+has to be something you can build deliberately and inspect before acting.
+
+```
+space   toggle this row and advance
+v       range — move, then v again; esc cancels
+a       mark every visible row (never unmarks)
+A       clear the visible marks; again for those the filter hides
+i       invert the visible rows
++       add the visible rows, keeping what is already marked
+m       show only what is marked
+```
+
+The same vocabulary works on the application list and on the resource tree.
+
+`a` marks and **does not unmark**. A key that means "select all" when half the
+rows are marked and "clear" when they all are is a key whose effect you find out
+by pressing it — the wrong way to discover you just marked 2,976 applications.
+
+`v` draws the range before it takes it: the rows between the anchor and the
+cursor are shown as marked while you move, so nothing is committed blind.
+
+`+` is additive where `a` is not, which is what makes a selection buildable
+across several filters — filter, `+`, filter again, `+`.
+
+`m` narrows the list to the selection. Forty marks built across four filters are
+otherwise something you have to take on trust, and this is how you check them
+before pressing `s`. Change the selection while it is on and the list follows;
+clear it entirely and the mode turns itself off rather than leaving you at an
+empty screen.
+
+### Everything is scoped to the filtered rows
+
+"All" meaning every application on every server would mark things you cannot
+see, and the next thing you press is sync.
+
+The corollary is that marks can outlive the filter that made them, and **that is
+never silent**: the status line reads `12 marked (5 not shown)` whenever the
+filter is hiding part of the selection. `A` clears what you can see and says
+what it left behind; pressing it again takes the rest.
 
 Actions apply to the marked set when anything is marked, and to the cursor row
 otherwise, so `o`, `r`, and `s` behave the same whether or not you bothered to
-mark anything. Marks are available on both the application list and the resource
-tree; tree marks key on resource UID, so a recreated pod does not inherit the
-mark of the one it replaced.
+mark anything. Tree marks key on resource UID, so a recreated pod does not
+inherit the mark of the one it replaced.
 
 ## Keys
 
@@ -179,7 +215,9 @@ so it stays typeable while the filter prompt is open.
 |---|---|---|---|---|
 | `Enter` | open the application | live manifest | roll back | change the `*` row |
 | `Space` | mark and advance | mark and advance | — | — |
-| `a` | mark / clear all filtered | mark / clear all filtered | — | — |
+| `v` | range select | range select | — | — |
+| `a` `A` | mark all / clear | mark all / clear | — | — |
+| `i` `+` `m` | invert / add / marked only | ← | — | — |
 | `o` | **open in browser** | open the application in browser | ← | ← |
 | `d` | diff (desired vs live) | diff of the marked resources | diff against live | — |
 | `e` | events | — | — | events |

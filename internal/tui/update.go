@@ -321,6 +321,13 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.pagerTop = 0
 		return m, nil
 	case "esc":
+		// A range select in progress is the innermost level of all: escaping it
+		// abandons the range rather than the screen it was being made on.
+		if m.visualFrom >= 0 {
+			m.visualFrom = -1
+			m.setToast("range cancelled")
+			return m, nil
+		}
 		// Esc unwinds one level, and a level is not always a screen: the
 		// context view has a detail panel layered over its list. Popping the
 		// whole screen from inside the panel leaves the reader two steps away
