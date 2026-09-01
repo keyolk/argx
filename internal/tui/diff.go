@@ -18,12 +18,60 @@ func diffKey(group, kind, ns, name string) string {
 	return group + "/" + kind + "/" + ns + "/" + name
 }
 
-// renderDiff turns managed-resources entries into unified-diff text.
+// diffPair is the two documents Argo CD itself compares for one resource, and
+// whether the entry belongs in a diff at all.
 //
-// Argo CD's own `diff` field is not populated on this endpoint, so the diff is
-// computed here from normalizedLiveState vs targetState — the same two documents
-// the server compares, which keeps argx from reporting drift that Argo CD's
-// normalizations already ignore.
+// Getting this pair right is the whole correctness of the diff view. Argo CD's
+// own `diff` field is not populated on the managed-resources endpoint, so the
+// text has to be computed here — but from the same two sides the server used,
+// which are normalizedLiveState and *predictedLiveState*.
+//
+// predictedLiveState is not targetState. targetState is the raw desired
+// manifest as it came out of git; predictedLiveState is what the controller
+// produced by running that manifest through the diff config —
+// spec.ignoreDifferences, the resource overrides, the built-in normalizers, and
+// a merge against the live object — in StateDiffs(). Comparing a *normalized*
+// live side against an *un-normalized* desired side is comparing two documents
+// that were never meant to match: every field ignoreDifferences was written to
+// silence, and every default the API server filled in, comes back as drift.
+// That is the bug this pair exists to prevent, and it is why the UI asks the
+// endpoint for exactly these two fields and never fetches targetState at all
+// (resource-details.tsx: fields: ['items.normalizedLiveState',
+// 'items.predictedLiveState', ...]).
+//
+// Hooks are dropped for the same reason the UI drops them: a Job that ran once
+// during a sync is not drift, and listing it buries the changes that are.
+func diffPair(it argocd.ResourceDiff) (live, desired string, ok bool) {
+	if it.Hook {
+		return "", "", false
+	}
+	// The endpoint sends the JSON literal "null", not an empty string, for a
+	// side that does not exist — handleResourceCreateOrDeleteDiff writes
+	// []byte("null") for a resource being created or pruned. Treating that as a
+	// document would print "null" as the whole manifest and lose the "will be
+	// created" label, so it is normalized to empty here.
+	live = prettyJSON(nullToEmpty(it.NormalizedLiveState))
+	desired = prettyJSON(nullToEmpty(it.PredictedLiveState))
+	// Falling back keeps argx working against a server that answered without
+	// the normalized fields — an older API, or a projection that did not ask
+	// for them. The comparison is then the un-normalized one, which is worse
+	// but is still the honest reading of what arrived.
+	if live == "" && desired == "" {
+		live = prettyJSON(nullToEmpty(it.LiveState))
+		desired = prettyJSON(nullToEmpty(it.TargetState))
+	}
+	return live, desired, true
+}
+
+// nullToEmpty maps the JSON literal null onto the empty document.
+func nullToEmpty(s string) string {
+	if strings.TrimSpace(s) == "null" {
+		return ""
+	}
+	return s
+}
+
+// renderDiff turns managed-resources entries into unified-diff text.
 func renderDiff(items []argocd.ResourceDiff, want map[string]bool) []string {
 	var out []string
 	changed := 0
@@ -31,9 +79,8 @@ func renderDiff(items []argocd.ResourceDiff, want map[string]bool) []string {
 		if want != nil && !want[diffKey(it.Group, it.Kind, it.Namespace, it.Name)] {
 			continue
 		}
-		live := prettyJSON(firstNonEmpty(it.NormalizedLiveState, it.LiveState))
-		target := prettyJSON(it.TargetState)
-		if live == target {
+		live, target, ok := diffPair(it)
+		if !ok || live == target {
 			continue
 		}
 		changed++
@@ -59,15 +106,6 @@ func groupKind(group, kind string) string {
 		return kind
 	}
 	return kind + "." + group
-}
-
-func firstNonEmpty(vals ...string) string {
-	for _, v := range vals {
-		if v != "" {
-			return v
-		}
-	}
-	return ""
 }
 
 // prettyJSON re-indents a JSON manifest so the diff compares formatting-stable

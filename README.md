@@ -564,6 +564,29 @@ depth never balances, and a depth-based skip stops after one line.
 
 ## Diff
 
+### It is the diff Argo CD computed
+
+argx diffs the two documents the server itself compared:
+`normalizedLiveState` against `predictedLiveState`, the same pair the Argo CD
+web UI asks the `managed-resources` endpoint for.
+
+That pair is the whole correctness of this view. `targetState` — the obvious
+choice, and the wrong one — is the desired manifest as it came out of git,
+*before* `spec.ignoreDifferences`, the resource overrides and the built-in
+normalizers ran. `predictedLiveState` is what the controller produced by putting
+that manifest through all of them and merging it against the live object.
+Comparing a normalized live side against an un-normalized desired side compares
+two documents that were never meant to match: every field somebody wrote an
+`ignoreDifferences` to silence, and every default the API server filled in, comes
+back as drift. An application Argo CD calls Synced reads as Synced here.
+
+Hook resources are left out, as they are in the web UI — a Job that ran once
+during a sync is not drift, and listing it buries the changes that are.
+
+The endpoint does not populate its own `diff` field, so the patch text is
+computed locally from those two documents; what is local is the *rendering*, not
+the comparison.
+
 ### Side by side
 
 `s` in the diff view lays the two states out in columns instead of as a unified

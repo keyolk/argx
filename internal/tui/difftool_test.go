@@ -44,7 +44,7 @@ func TestSidesCarryTheDocumentsNotTheDiff(t *testing.T) {
 	items := []argocd.ResourceDiff{{
 		Kind: "Deployment", Namespace: "web", Name: "frontend",
 		NormalizedLiveState: `{"spec":{"replicas":3}}`,
-		TargetState:         `{"spec":{"replicas":5}}`,
+		PredictedLiveState:  `{"spec":{"replicas":5}}`,
 	}}
 
 	sides := collectSides(items, nil, "web-frontend")
@@ -72,7 +72,7 @@ func TestSidesCarryTheDocumentsNotTheDiff(t *testing.T) {
 func TestHeadersAppearOnBothSides(t *testing.T) {
 	items := []argocd.ResourceDiff{{
 		Kind: "ConfigMap", Namespace: "kube-system", Name: "new-thing",
-		TargetState: `{"data":{"a":"1"}}`,
+		PredictedLiveState: `{"data":{"a":"1"}}`,
 	}}
 
 	sides := collectSides(items, nil, "app")
@@ -93,7 +93,7 @@ func TestHeadersAppearOnBothSides(t *testing.T) {
 func TestUnchangedResourcesAreOmitted(t *testing.T) {
 	same := `{"spec":{"replicas":3}}`
 	items := []argocd.ResourceDiff{
-		{Kind: "Deployment", Name: "same", NormalizedLiveState: same, TargetState: same},
+		{Kind: "Deployment", Name: "same", NormalizedLiveState: same, PredictedLiveState: same},
 	}
 	if sides := collectSides(items, nil, "app"); sides != nil {
 		t.Errorf("nothing differs, so there is nothing to hand a diff tool:\n%+v", sides)
@@ -105,9 +105,9 @@ func TestUnchangedResourcesAreOmitted(t *testing.T) {
 func TestOnlyTheRequestedResourcesAreCollected(t *testing.T) {
 	items := []argocd.ResourceDiff{
 		{Kind: "Deployment", Namespace: "web", Name: "wanted",
-			NormalizedLiveState: `{"a":1}`, TargetState: `{"a":2}`},
+			NormalizedLiveState: `{"a":1}`, PredictedLiveState: `{"a":2}`},
 		{Kind: "Service", Namespace: "web", Name: "unwanted",
-			NormalizedLiveState: `{"b":1}`, TargetState: `{"b":2}`},
+			NormalizedLiveState: `{"b":1}`, PredictedLiveState: `{"b":2}`},
 	}
 	want := map[string]bool{diffKey("", "Deployment", "web", "wanted"): true}
 

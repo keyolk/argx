@@ -49,9 +49,11 @@ func collectSides(items []argocd.ResourceDiff, want map[string]bool, appName str
 		if want != nil && !want[diffKey(it.Group, it.Kind, it.Namespace, it.Name)] {
 			continue
 		}
-		l := prettyJSON(firstNonEmpty(it.NormalizedLiveState, it.LiveState))
-		d := prettyJSON(it.TargetState)
-		if l == d {
+		// The same pair the unified view diffs, so the external tool is handed
+		// the comparison the reader was already looking at rather than a
+		// second, differently-normalized one.
+		l, d, ok := diffPair(it)
+		if !ok || l == d {
 			continue
 		}
 		head := fmt.Sprintf("# %s %s/%s\n",
