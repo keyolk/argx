@@ -12,7 +12,7 @@ import (
 func (m *Model) handleAppsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// The mark vocabulary is the same on both lists, so it is handled in one
 	// place; anything it does not claim falls through to the keys below.
-	if cmd, handled := m.handleMarkKey(msg, m.appScope(), &m.appCur); handled {
+	if cmd, handled := m.handleMarkKey(msg.String(), m.appScope(), &m.appCur); handled {
 		return m, cmd
 	}
 	switch msg.String() {
@@ -88,7 +88,13 @@ func (m *Model) handleAppsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if len(m.fleetErrs) > 0 {
 			m.showError(fleetErrorText(m.fleetErrs))
 		}
-	case "A":
+	case "F":
+		// Follow. This was A until the mark vocabulary claimed that letter for
+		// "clear the visible marks", at which point the mark handler — which
+		// runs first, because both lists share it — swallowed the key and
+		// auto-refresh became unreachable while the footer and the help still
+		// named it. One letter, two owners, is a key that does whichever thing
+		// the dispatch order happens to pick.
 		m.autoRefresh = !m.autoRefresh
 		if m.autoRefresh {
 			m.setToast("auto-refresh on (15s)")
@@ -100,7 +106,7 @@ func (m *Model) handleAppsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleTreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if cmd, handled := m.handleMarkKey(msg, m.treeScope(), &m.treeCur); handled {
+	if cmd, handled := m.handleMarkKey(msg.String(), m.treeScope(), &m.treeCur); handled {
 		return m, cmd
 	}
 	switch msg.String() {
@@ -118,7 +124,10 @@ func (m *Model) handleTreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.treeCur = len(m.treeRows) - 1
 		m.clampScroll()
 
-	case "enter":
+	case "enter", "right":
+		// `l` would be the third key here, and on this list it is already
+		// logs — so `right` carries the "drill in" half of the pair on its own
+		// rather than the tree being the one screen where → does nothing.
 		if n := m.currentNode(); n != nil && m.app != nil {
 			m.push(screenManifest)
 			m.pager, m.pagerTitle = nil, "manifest · "+n.Name

@@ -337,6 +337,20 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.pagerTop = 0
 			return m, nil
 		}
+		// A filter is a level too. Closing the prompt with enter keeps the
+		// query — that is the point of enter — which leaves the reader on a
+		// narrowed list whose only way back to everything was to reopen the
+		// prompt and erase what they typed. Esc is already the key that undoes
+		// the innermost thing; a standing filter is the innermost thing here,
+		// and it is in front of the screen it narrows.
+		//
+		// The marks are deliberately left alone. They are what the filtering
+		// was for, and dropping a selection built across several filters
+		// because the reader wanted to see the whole list again is the surprise
+		// in the expensive direction — the status line goes on counting them.
+		if m.clearStandingFilter() {
+			return m, nil
+		}
 		m.pop()
 		return m, nil
 	case "/":
@@ -469,7 +483,9 @@ func (m *Model) handleHistoryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.histCur, m.histTop = 0, 0
 	case "G", "end":
 		m.histCur = len(rows) - 1
-	case "enter", "b":
+	case "enter", "b", "right":
+		// → drills in the way it does on every other list; what it reaches here
+		// is the rollback prompt, which asks before it does anything.
 		return m, m.armRollback()
 	case "d":
 		// Diff a past deployment against what is live by looking at the app
@@ -499,7 +515,7 @@ func (m *Model) handleDetailsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.detailCur = len(m.detailRows()) - 1
 		m.moveDetail(-1)
 		m.moveDetail(1)
-	case "enter":
+	case "enter", "right":
 		return m.handleDetailEnter()
 	case "e":
 		if m.app != nil {

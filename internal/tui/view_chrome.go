@@ -334,9 +334,9 @@ func (m *Model) renderFooter() string {
 		// mark keys sat undiscovered behind a key nobody had reason to press.
 		// They lead now, because every destructive action here takes its
 		// targets from the selection.
-		hints = []string{"space/a/A mark", "v range", "enter open", "s sync",
-			"d diff", "o browser", "W schedules", "S appsets", "C contexts",
-			"/ filter", "? help", "q quit"}
+		hints = []string{"space/a/A mark", "J/K extend", "v range", "enter open",
+			"s sync", "d diff", "o browser", "W schedules", "S appsets",
+			"C contexts", "/ filter", "? help", "q quit"}
 	case screenApp:
 		switch m.tab {
 		case tabHistory:
@@ -344,9 +344,9 @@ func (m *Model) renderFooter() string {
 		case tabDetails:
 			hints = []string{"enter edit", "[ ] tabs", m.syncHint(), "w windows", "e events", "esc back", "q quit"}
 		default:
-			hints = []string{"space/a/A mark", "v range", "enter manifest",
-				"d diff", "D app diff", "l logs", "e shell", m.syncHint(),
-				"w windows", "esc back", "q quit"}
+			hints = []string{"space/a/A mark", "J/K extend", "v range",
+				"enter manifest", "d diff", "D app diff", "l logs", "e shell",
+				m.syncHint(), "w windows", "esc back", "q quit"}
 		}
 	case screenAppSets:
 		hints = []string{"enter apps", "y spec", "o browser", "S applications", "/ filter", "? help", "q quit"}
@@ -380,6 +380,21 @@ func (m *Model) renderFooter() string {
 	if n := m.pendingSchedules(); n > 0 && m.screen != screenSchedule {
 		hints = append([]string{fmt.Sprintf("W %d scheduled", n)}, hints...)
 	}
+	// An open filter prompt replaces the hints entirely, for the same reason:
+	// it is a mode, and almost every key named above is text while it is on.
+	// The three that are not are the ones nobody would guess — the mark keys
+	// have to be modified here, since space and J are characters — so this is
+	// the only place they get written down at the moment they apply.
+	if m.filtering {
+		hints = []string{"↑↓ move", "enter keep", "esc clear"}
+		if _, _, ok := m.markableList(); ok {
+			// alt is what the whole vocabulary wears in here, so it is said once
+			// rather than on every key: naming alt+a, alt+A and alt+i separately
+			// costs three times the width to say the same thing.
+			hints = []string{"↑↓ move", "→ mark", "← unmark", "shift+↑↓ extend",
+				"enter keep the query", "esc clear"}
+		}
+	}
 	// A range in progress replaces the hints entirely. It is a mode, and the
 	// two keys that end it are the only ones worth naming while it is on.
 	if m.visualFrom >= 0 {
@@ -394,9 +409,20 @@ func (m *Model) renderFooter() string {
 	// has cut the wrong thing. The exit is how you leave, and the help is the
 	// only place the keys that did not fit are written down — dropping it
 	// exactly when the footer is too small to list them is the worst moment.
-	keep := 1
-	if len(hints) > 1 && hints[len(hints)-2] == "? help" {
-		keep = 2
+	// "esc back" is an exit too, and on a screen the reader drilled into it is
+	// the *only* one that does not lose their place — so it is kept for the
+	// same reason, rather than being the first casualty of a new hint.
+	keep := 0
+	for keep < len(hints) {
+		switch hints[len(hints)-1-keep] {
+		case "q quit", "? help", "esc back":
+			keep++
+			continue
+		}
+		break
+	}
+	if keep == 0 {
+		keep = 1
 	}
 	tail := strings.Join(hints[len(hints)-keep:], "  ")
 	body := hints[:len(hints)-keep]
@@ -409,6 +435,23 @@ func (m *Model) renderFooter() string {
 	}
 	hints = append(body, tail)
 	return m.st.footer.Render(truncate(strings.Join(hints, "  "), m.width))
+}
+
+// confirmChoices draws the yes/no pair with the cursor on one of them.
+//
+// The selected side is marked with a caret as well as colored, because the
+// whole point of the cursor is to say which way enter will go and a reader on a
+// monochrome terminal needs that answer too.
+func (m *Model) confirmChoices() string {
+	no, yes := "  No", "  Yes"
+	if m.confirm.yes {
+		yes = m.st.warn.Render("› Yes")
+		no = m.st.dim.Render(no)
+	} else {
+		no = m.st.selected.Render("› No")
+		yes = m.st.dim.Render(yes)
+	}
+	return no + "     " + yes
 }
 
 // renderOverlay draws a modal centered over the frame.
@@ -427,7 +470,8 @@ func (m *Model) renderOverlay(frame string) string {
 		w := m.modalContentWidth(76)
 		lines := []string{m.st.warn.Render(m.confirm.title), ""}
 		lines = append(lines, m.confirm.body...)
-		lines = append(lines, "", m.st.dim.Render("y confirm   ·   n / esc cancel"))
+		lines = append(lines, "", m.confirmChoices(),
+			m.st.dim.Render("h/l move · enter take it · y/n outright"))
 		box = m.st.modal.Render(strings.Join(
 			clampModalBody(lines, w, m.modalContentHeight()), "\n"))
 
@@ -444,6 +488,16 @@ func (m *Model) renderOverlay(frame string) string {
 			}
 			return m.st.dim.Render("[ ]")
 		}
+		// The cursor is a caret in the left margin rather than a highlight on
+		// the row: the row already carries a checkbox whose own state is what
+		// the color is saying, and two colored things a cell apart is how a
+		// reader stops being able to tell which one they are looking at.
+		row := func(i int, s string) string {
+			if m.syncOpts.cur == i {
+				return m.st.accent.Render("›") + " " + s
+			}
+			return "  " + s
+		}
 		scope := fmt.Sprintf("%d application(s)", len(m.syncOpts.targets))
 		if m.screen == screenApp && m.tab == tabResources && m.app != nil {
 			scope = fmt.Sprintf("%d resource(s) of %s", len(m.markedNodes()), m.app.Name())
@@ -452,14 +506,14 @@ func (m *Model) renderOverlay(frame string) string {
 			m.st.accent.Render("Sync options"),
 			m.st.dim.Render(scope),
 			"",
-			check(m.syncOpts.prune) + " " + m.st.info.Render("p") + " prune  " +
-				m.st.dim.Render("(delete resources not in git)"),
-			check(m.syncOpts.dryRun) + " " + m.st.info.Render("d") + " dry-run  " +
-				m.st.dim.Render("(compute only, apply nothing)"),
-			check(m.syncOpts.schedule) + " " + m.st.info.Render("w") + " wait for the sync window  " +
-				m.st.dim.Render("(while argx runs)"),
+			row(0, check(m.syncOpts.prune)+" "+m.st.info.Render("p")+" prune  "+
+				m.st.dim.Render("(delete resources not in git)")),
+			row(1, check(m.syncOpts.dryRun)+" "+m.st.info.Render("d")+" dry-run  "+
+				m.st.dim.Render("(compute only, apply nothing)")),
+			row(2, check(m.syncOpts.schedule)+" "+m.st.info.Render("w")+" wait for the sync window  "+
+				m.st.dim.Render("(while argx runs)")),
 			"",
-			m.st.dim.Render("enter continue   ·   esc cancel"),
+			m.st.dim.Render("j/k move   ·   space toggle   ·   enter continue   ·   esc cancel"),
 		}
 		if m.syncBlocked() && !m.syncOpts.schedule {
 			// Syncing now would be rejected and recorded as a failed operation.
@@ -467,7 +521,7 @@ func (m *Model) renderOverlay(frame string) string {
 			lines = append(lines[:len(lines)-2],
 				m.st.err.Render("A sync window is blocking this — syncing now will be refused."),
 				"",
-				m.st.dim.Render("enter continue   ·   esc cancel"))
+				m.st.dim.Render("j/k move   ·   space toggle   ·   enter continue   ·   esc cancel"))
 		}
 		box = m.st.modal.Render(strings.Join(
 			clampModalBody(lines, m.modalContentWidth(64), m.modalContentHeight()), "\n"))

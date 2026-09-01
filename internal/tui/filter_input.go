@@ -26,6 +26,20 @@ func (m *Model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "up", "down", "pgup", "pgdown", "ctrl+n", "ctrl+p":
 		return m.moveWhileFiltering(msg)
+	}
+	// Marking, without leaving the prompt. Filtering and selecting are the same
+	// activity — narrow, take those rows, narrow again, take those — and having
+	// to close the prompt in between means retyping the query to carry on.
+	//
+	// This takes → and ← away from the text cursor on the two lists that mark.
+	// It is a real cost, and the smaller one: ctrl+b / ctrl+f still move a
+	// character and alt+b / alt+f a word, which is the readline spelling anyone
+	// editing a line already has in their fingers, whereas marking had no
+	// unmodified keys left at all.
+	if m.marksInFilter(msg) {
+		return m.markWhileFiltering(msg)
+	}
+	switch msg.String() {
 	case "tab", "shift+tab":
 		// Tab completes the word under the cursor. On the application list
 		// only: the resource filter's fields are a fixed handful documented in
@@ -43,6 +57,16 @@ func (m *Model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch msg.String() {
 	case "esc":
+		// A range opened from inside the prompt is the innermost level, exactly
+		// as it is outside one — so Esc abandons the range and leaves both the
+		// prompt and the query alone. Without this the range survived an Esc
+		// that erased the query it was being made under, which is the worst of
+		// both: a selection still armed over rows the reader can no longer see.
+		if m.visualFrom >= 0 {
+			m.visualFrom = -1
+			m.setToast("range cancelled")
+			return m, nil
+		}
 		r = nil
 		m.filtering = false
 	case "enter":
@@ -202,6 +226,32 @@ func (m *Model) filterTarget() *string {
 	return &m.appFilter.raw
 }
 
+// clearStandingFilter drops the narrowing in front of the current screen, and
+// reports whether there was any.
+//
+// Two things narrow a list, and they come off in the order they were put on:
+// `m` (show only what is marked) sits in front of the query, because a reader
+// filters first and then narrows to their selection. Taking both at once would
+// make one Esc jump two steps.
+func (m *Model) clearStandingFilter() bool {
+	if m.markedOnly {
+		m.markedOnly = false
+		m.setToast("showing everything again")
+		m.reapplyFilter()
+		return true
+	}
+	target := m.filterTarget()
+	if strings.TrimSpace(*target) == "" {
+		return false
+	}
+	*target = ""
+	m.filterCur = 0
+	m.completionHint = nil
+	m.reapplyFilter()
+	m.setToast("filter cleared")
+	return true
+}
+
 // reapplyFilter recomputes the visible rows after the query changed.
 func (m *Model) reapplyFilter() {
 	switch {
@@ -261,6 +311,22 @@ func (m *Model) moveWhileFiltering(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
+// runConfirm commits the pending prompt.
+//
+// The action is a tea.Cmd, so the work leaves the UI thread the way every other
+// side effect in argx does; the state is cleared first so a second key cannot
+// fire the same action twice while the command is in flight.
+func (m *Model) runConfirm() tea.Cmd {
+	m.overlay = overlayNone
+	action := m.confirm.action
+	m.confirm = confirmState{}
+	if action == nil {
+		return nil
+	}
+	m.loading = true
+	return action()
+}
+
 func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.overlay {
 	case overlayError:
@@ -272,14 +338,29 @@ func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	case overlayConfirm:
 		switch msg.String() {
-		case "y", "Y", "enter":
-			m.overlay = overlayNone
-			if m.confirm.action != nil {
-				cmd := m.confirm.action()
+		case "h", "left", "l", "right":
+			// A cursor, so the answer can be given by moving to it and pressing
+			// enter — the same two keys that work everywhere else in argx.
+			// Without this the modal was reachable only by knowing y and n,
+			// which are the one pair nobody can guess wrong but everybody has
+			// to be told.
+			m.confirm.yes = !m.confirm.yes
+			return m, nil
+		case "tab":
+			m.confirm.yes = !m.confirm.yes
+			return m, nil
+		case "y", "Y":
+			return m, m.runConfirm()
+		case "enter":
+			// enter takes whichever side the cursor is on, which is No until
+			// the reader moves it. An enter reflex on a modal that just
+			// appeared must not sync a cluster.
+			if !m.confirm.yes {
+				m.overlay = overlayNone
 				m.confirm = confirmState{}
-				m.loading = true
-				return m, cmd
+				return m, nil
 			}
+			return m, m.runConfirm()
 		case "n", "N", "esc":
 			m.overlay = overlayNone
 			m.confirm = confirmState{}
@@ -293,7 +374,24 @@ func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.handleContainerKey(msg)
 
 	case overlaySyncOpts:
+		toggles := m.syncOptToggles()
 		switch msg.String() {
+		case "j", "down":
+			m.syncOpts.cur++
+		case "k", "up":
+			m.syncOpts.cur--
+		case "g", "home":
+			m.syncOpts.cur = 0
+		case "G", "end":
+			m.syncOpts.cur = len(toggles) - 1
+		case " ", "h", "left", "l", "right":
+			// Space flips the row under the cursor, and h/l flip it too: this
+			// is a row of checkboxes, so left and right are what a reader
+			// coming from any other list reaches for, and there is no
+			// horizontal axis here for them to mean anything else.
+			if m.syncOpts.cur >= 0 && m.syncOpts.cur < len(toggles) {
+				*toggles[m.syncOpts.cur] = !*toggles[m.syncOpts.cur]
+			}
 		case "p":
 			m.syncOpts.prune = !m.syncOpts.prune
 		case "d":
@@ -305,6 +403,12 @@ func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "enter", "y":
 			m.overlay = overlayNone
 			return m, m.armSyncConfirm()
+		}
+		if m.syncOpts.cur >= len(toggles) {
+			m.syncOpts.cur = len(toggles) - 1
+		}
+		if m.syncOpts.cur < 0 {
+			m.syncOpts.cur = 0
 		}
 		return m, nil
 	}
