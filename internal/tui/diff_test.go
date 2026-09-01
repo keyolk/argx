@@ -15,7 +15,7 @@ func TestRenderDiffReportsNoDifferences(t *testing.T) {
 		Kind: "Deployment", Name: "web", Namespace: "prod",
 		NormalizedLiveState: same, PredictedLiveState: same,
 	}}
-	got := strings.Join(renderDiff(items, nil), "\n")
+	got := strings.Join(renderDiff(items, nil, false), "\n")
 	if !strings.Contains(got, "no differences") {
 		t.Errorf("identical states should report no differences, got:\n%s", got)
 	}
@@ -35,7 +35,7 @@ func TestRenderDiffComparesTheNormalizedPair(t *testing.T) {
 		NormalizedLiveState: `{"spec":{"replicas":2}}`,
 		PredictedLiveState:  `{"spec":{"replicas":2}}`,
 	}}
-	got := strings.Join(renderDiff(items, nil), "\n")
+	got := strings.Join(renderDiff(items, nil, false), "\n")
 	if !strings.Contains(got, "no differences") {
 		t.Errorf("the server's normalized pair should win over the raw documents, got:\n%s", got)
 	}
@@ -54,7 +54,7 @@ func TestRenderDiffIgnoresTargetStateWhenPredictedIsPresent(t *testing.T) {
 		TargetState:        `{"spec":{"replicas":1}}`,
 		PredictedLiveState: `{"spec":{"replicas":4}}`,
 	}}
-	got := strings.Join(renderDiff(items, nil), "\n")
+	got := strings.Join(renderDiff(items, nil, false), "\n")
 	if !strings.Contains(got, "no differences") {
 		t.Errorf("an ignored field must not show as drift, got:\n%s", got)
 	}
@@ -69,7 +69,7 @@ func TestRenderDiffFallsBackToRawStates(t *testing.T) {
 		LiveState:   `{"spec":{"replicas":2}}`,
 		TargetState: `{"spec":{"replicas":5}}`,
 	}}
-	got := strings.Join(renderDiff(items, nil), "\n")
+	got := strings.Join(renderDiff(items, nil, false), "\n")
 	if strings.Contains(got, "no differences") {
 		t.Errorf("without the normalized pair the raw one should still diff, got:\n%s", got)
 	}
@@ -84,7 +84,7 @@ func TestRenderDiffSkipsHooks(t *testing.T) {
 		NormalizedLiveState: `{"spec":{"completions":1}}`,
 		PredictedLiveState:  `{"spec":{"completions":2}}`,
 	}}
-	got := strings.Join(renderDiff(items, nil), "\n")
+	got := strings.Join(renderDiff(items, nil, false), "\n")
 	if !strings.Contains(got, "no differences") {
 		t.Errorf("a hook is not drift, got:\n%s", got)
 	}
@@ -99,7 +99,7 @@ func TestRenderDiffTreatsJSONNullAsAMissingSide(t *testing.T) {
 		NormalizedLiveState: "null",
 		PredictedLiveState:  `{"data":{"a":"1"}}`,
 	}}
-	got := strings.Join(renderDiff(created, nil), "\n")
+	got := strings.Join(renderDiff(created, nil, false), "\n")
 	if !strings.Contains(got, "will be created") {
 		t.Errorf("a null live side means the resource is being created, got:\n%s", got)
 	}
@@ -114,7 +114,7 @@ func TestRenderDiffTreatsJSONNullAsAMissingSide(t *testing.T) {
 		NormalizedLiveState: `{"data":{"a":"1"}}`,
 		PredictedLiveState:  "null",
 	}}
-	if got := strings.Join(renderDiff(pruned, nil), "\n"); !strings.Contains(got, "prune candidate") {
+	if got := strings.Join(renderDiff(pruned, nil, false), "\n"); !strings.Contains(got, "prune candidate") {
 		t.Errorf("a null desired side means the resource is a prune candidate, got:\n%s", got)
 	}
 }
@@ -125,7 +125,7 @@ func TestRenderDiffShowsAddedAndRemovedLines(t *testing.T) {
 		NormalizedLiveState: `{"spec":{"replicas":2}}`,
 		PredictedLiveState:  `{"spec":{"replicas":5}}`,
 	}}
-	got := strings.Join(renderDiff(items, nil), "\n")
+	got := strings.Join(renderDiff(items, nil, false), "\n")
 	if !strings.Contains(got, "-") || !strings.Contains(got, "+") {
 		t.Errorf("a changed value should produce both a - and a + line, got:\n%s", got)
 	}
@@ -138,14 +138,14 @@ func TestRenderDiffLabelsCreatesAndPrunes(t *testing.T) {
 	created := []argocd.ResourceDiff{{
 		Kind: "ConfigMap", Name: "new", PredictedLiveState: `{"data":{"a":"1"}}`,
 	}}
-	if got := strings.Join(renderDiff(created, nil), "\n"); !strings.Contains(got, "will be created") {
+	if got := strings.Join(renderDiff(created, nil, false), "\n"); !strings.Contains(got, "will be created") {
 		t.Errorf("a resource missing from the cluster should say so, got:\n%s", got)
 	}
 
 	pruned := []argocd.ResourceDiff{{
 		Kind: "ConfigMap", Name: "old", NormalizedLiveState: `{"data":{"a":"1"}}`,
 	}}
-	if got := strings.Join(renderDiff(pruned, nil), "\n"); !strings.Contains(got, "prune candidate") {
+	if got := strings.Join(renderDiff(pruned, nil, false), "\n"); !strings.Contains(got, "prune candidate") {
 		t.Errorf("a resource absent from the desired state should be flagged, got:\n%s", got)
 	}
 }
@@ -158,7 +158,7 @@ func TestRenderDiffHonorsResourceFilter(t *testing.T) {
 	}
 	want := map[string]bool{diffKey("", "Deployment", "", "web"): true}
 
-	got := strings.Join(renderDiff(items, want), "\n")
+	got := strings.Join(renderDiff(items, want, false), "\n")
 	if !strings.Contains(got, "web") {
 		t.Errorf("the selected resource should appear, got:\n%s", got)
 	}

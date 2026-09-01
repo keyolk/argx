@@ -47,7 +47,7 @@ func TestSidesCarryTheDocumentsNotTheDiff(t *testing.T) {
 		PredictedLiveState:  `{"spec":{"replicas":5}}`,
 	}}
 
-	sides := collectSides(items, nil, "web-frontend")
+	sides := collectSides(items, nil, "web-frontend", false)
 	if sides == nil {
 		t.Fatal("a differing resource should produce two sides")
 	}
@@ -75,7 +75,7 @@ func TestHeadersAppearOnBothSides(t *testing.T) {
 		PredictedLiveState: `{"data":{"a":"1"}}`,
 	}}
 
-	sides := collectSides(items, nil, "app")
+	sides := collectSides(items, nil, "app", false)
 	if sides == nil {
 		t.Fatal("a resource that exists only in git still has two sides to compare")
 	}
@@ -95,7 +95,7 @@ func TestUnchangedResourcesAreOmitted(t *testing.T) {
 	items := []argocd.ResourceDiff{
 		{Kind: "Deployment", Name: "same", NormalizedLiveState: same, PredictedLiveState: same},
 	}
-	if sides := collectSides(items, nil, "app"); sides != nil {
+	if sides := collectSides(items, nil, "app", false); sides != nil {
 		t.Errorf("nothing differs, so there is nothing to hand a diff tool:\n%+v", sides)
 	}
 }
@@ -111,7 +111,7 @@ func TestOnlyTheRequestedResourcesAreCollected(t *testing.T) {
 	}
 	want := map[string]bool{diffKey("", "Deployment", "web", "wanted"): true}
 
-	sides := collectSides(items, want, "app")
+	sides := collectSides(items, want, "app", false)
 	if sides == nil {
 		t.Fatal("the wanted resource differs")
 	}

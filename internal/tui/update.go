@@ -67,6 +67,9 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pager = msg.lines
 		m.pagerTitle = msg.title
 		m.pagerSides = msg.sides
+		m.diffItems, m.diffWant = msg.items, msg.want
+		pairs, _ := pairHashed(msg.items)
+		m.diffHasPairs = len(pairs) > 0
 		m.pagerTop = 0
 		return m, nil
 
