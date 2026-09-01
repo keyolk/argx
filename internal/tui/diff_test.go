@@ -13,7 +13,7 @@ func TestRenderDiffReportsNoDifferences(t *testing.T) {
 	same := `{"spec":{"replicas":2}}`
 	items := []argocd.ResourceDiff{{
 		Kind: "Deployment", Name: "web", Namespace: "prod",
-		NormalizedLiveState: same, TargetState: same,
+		NormalizedLiveState: same, PredictedLiveState: same,
 	}}
 	got := strings.Join(renderDiff(items, nil), "\n")
 	if !strings.Contains(got, "no differences") {
@@ -21,19 +21,101 @@ func TestRenderDiffReportsNoDifferences(t *testing.T) {
 	}
 }
 
-// The diff must compare the *normalized* live state, which is what Argo CD
-// itself compares — otherwise argx reports drift the server deliberately
-// ignores.
-func TestRenderDiffPrefersNormalizedLiveState(t *testing.T) {
+// The diff must compare the two sides Argo CD compared — normalizedLiveState
+// against predictedLiveState — not the raw documents either came from.
+//
+// This is the test that catches the whole class of false drift: here the raw
+// live and raw target disagree on every field, and the server's own normalized
+// pair agrees. Argo CD calls this application Synced, and so must argx.
+func TestRenderDiffComparesTheNormalizedPair(t *testing.T) {
 	items := []argocd.ResourceDiff{{
 		Kind: "Deployment", Name: "web",
-		LiveState:           `{"spec":{"replicas":9}}`,
+		LiveState:           `{"spec":{"replicas":9,"paused":false}}`,
+		TargetState:         `{"spec":{"replicas":1}}`,
 		NormalizedLiveState: `{"spec":{"replicas":2}}`,
-		TargetState:         `{"spec":{"replicas":2}}`,
+		PredictedLiveState:  `{"spec":{"replicas":2}}`,
 	}}
 	got := strings.Join(renderDiff(items, nil), "\n")
 	if !strings.Contains(got, "no differences") {
-		t.Errorf("the normalized live state should win over the raw one, got:\n%s", got)
+		t.Errorf("the server's normalized pair should win over the raw documents, got:\n%s", got)
+	}
+}
+
+// targetState is the desired manifest *before* ignoreDifferences and the
+// normalizers ran, so a field the application asked Argo CD to ignore still
+// differs there. Diffing against it is how argx would report drift on a field
+// somebody deliberately silenced — the fields must not be mixed across sides.
+func TestRenderDiffIgnoresTargetStateWhenPredictedIsPresent(t *testing.T) {
+	items := []argocd.ResourceDiff{{
+		Kind: "Deployment", Name: "web",
+		NormalizedLiveState: `{"spec":{"replicas":4}}`,
+		// What git says, and what an ignoreDifferences on replicas exists to
+		// stop argx from shouting about.
+		TargetState:        `{"spec":{"replicas":1}}`,
+		PredictedLiveState: `{"spec":{"replicas":4}}`,
+	}}
+	got := strings.Join(renderDiff(items, nil), "\n")
+	if !strings.Contains(got, "no differences") {
+		t.Errorf("an ignored field must not show as drift, got:\n%s", got)
+	}
+}
+
+// A server that answered without the normalized fields still gets a diff: the
+// un-normalized comparison is worse, but it is the honest reading of what
+// arrived, and showing nothing would look like "no differences".
+func TestRenderDiffFallsBackToRawStates(t *testing.T) {
+	items := []argocd.ResourceDiff{{
+		Kind: "Deployment", Name: "web",
+		LiveState:   `{"spec":{"replicas":2}}`,
+		TargetState: `{"spec":{"replicas":5}}`,
+	}}
+	got := strings.Join(renderDiff(items, nil), "\n")
+	if strings.Contains(got, "no differences") {
+		t.Errorf("without the normalized pair the raw one should still diff, got:\n%s", got)
+	}
+}
+
+// Hooks are not drift. A Job that ran once during a sync is reported by the
+// endpoint like any other managed resource, and listing it buries the changes
+// that matter — the Argo CD UI drops it for the same reason.
+func TestRenderDiffSkipsHooks(t *testing.T) {
+	items := []argocd.ResourceDiff{{
+		Kind: "Job", Name: "db-migrate", Hook: true,
+		NormalizedLiveState: `{"spec":{"completions":1}}`,
+		PredictedLiveState:  `{"spec":{"completions":2}}`,
+	}}
+	got := strings.Join(renderDiff(items, nil), "\n")
+	if !strings.Contains(got, "no differences") {
+		t.Errorf("a hook is not drift, got:\n%s", got)
+	}
+}
+
+// The endpoint writes the JSON literal null — not an empty string — for the
+// side that does not exist. Read as a document it prints "null" as the whole
+// manifest and loses the label that says what is about to happen.
+func TestRenderDiffTreatsJSONNullAsAMissingSide(t *testing.T) {
+	created := []argocd.ResourceDiff{{
+		Kind: "ConfigMap", Name: "new",
+		NormalizedLiveState: "null",
+		PredictedLiveState:  `{"data":{"a":"1"}}`,
+	}}
+	got := strings.Join(renderDiff(created, nil), "\n")
+	if !strings.Contains(got, "will be created") {
+		t.Errorf("a null live side means the resource is being created, got:\n%s", got)
+	}
+	for _, line := range strings.Split(got, "\n") {
+		if strings.TrimSpace(strings.TrimLeft(line, "-+")) == "null" {
+			t.Errorf("the null literal leaked into the diff as a document: %q", line)
+		}
+	}
+
+	pruned := []argocd.ResourceDiff{{
+		Kind: "ConfigMap", Name: "old",
+		NormalizedLiveState: `{"data":{"a":"1"}}`,
+		PredictedLiveState:  "null",
+	}}
+	if got := strings.Join(renderDiff(pruned, nil), "\n"); !strings.Contains(got, "prune candidate") {
+		t.Errorf("a null desired side means the resource is a prune candidate, got:\n%s", got)
 	}
 }
 
@@ -41,7 +123,7 @@ func TestRenderDiffShowsAddedAndRemovedLines(t *testing.T) {
 	items := []argocd.ResourceDiff{{
 		Kind: "Deployment", Name: "web", Namespace: "prod",
 		NormalizedLiveState: `{"spec":{"replicas":2}}`,
-		TargetState:         `{"spec":{"replicas":5}}`,
+		PredictedLiveState:  `{"spec":{"replicas":5}}`,
 	}}
 	got := strings.Join(renderDiff(items, nil), "\n")
 	if !strings.Contains(got, "-") || !strings.Contains(got, "+") {
@@ -54,7 +136,7 @@ func TestRenderDiffShowsAddedAndRemovedLines(t *testing.T) {
 
 func TestRenderDiffLabelsCreatesAndPrunes(t *testing.T) {
 	created := []argocd.ResourceDiff{{
-		Kind: "ConfigMap", Name: "new", TargetState: `{"data":{"a":"1"}}`,
+		Kind: "ConfigMap", Name: "new", PredictedLiveState: `{"data":{"a":"1"}}`,
 	}}
 	if got := strings.Join(renderDiff(created, nil), "\n"); !strings.Contains(got, "will be created") {
 		t.Errorf("a resource missing from the cluster should say so, got:\n%s", got)
@@ -71,8 +153,8 @@ func TestRenderDiffLabelsCreatesAndPrunes(t *testing.T) {
 // A tree-scoped diff must show only the marked resources.
 func TestRenderDiffHonorsResourceFilter(t *testing.T) {
 	items := []argocd.ResourceDiff{
-		{Kind: "Deployment", Name: "web", NormalizedLiveState: `{"a":1}`, TargetState: `{"a":2}`},
-		{Kind: "Deployment", Name: "api", NormalizedLiveState: `{"a":1}`, TargetState: `{"a":3}`},
+		{Kind: "Deployment", Name: "web", NormalizedLiveState: `{"a":1}`, PredictedLiveState: `{"a":2}`},
+		{Kind: "Deployment", Name: "api", NormalizedLiveState: `{"a":1}`, PredictedLiveState: `{"a":3}`},
 	}
 	want := map[string]bool{diffKey("", "Deployment", "", "web"): true}
 

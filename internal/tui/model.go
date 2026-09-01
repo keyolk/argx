@@ -275,6 +275,12 @@ type Model struct {
 type confirmState struct {
 	title string
 	body  []string
+	// yes is the choice under the cursor. It starts false on every prompt
+	// because every one of them guards something destructive — a sync, a
+	// rollback, dropping scheduled work — so the key that commits must never be
+	// the one already selected. h/l and ←/→ move it; y and n still answer
+	// outright without moving anything.
+	yes bool
 	// action runs when the user confirms. It is a tea.Cmd so the work happens
 	// off the UI thread like every other side effect.
 	action func() tea.Cmd
@@ -290,6 +296,18 @@ type syncOptState struct {
 	// for a real fault.
 	schedule bool
 	targets  []argocd.Application
+	// cur is the toggle under the cursor. The letters still work — p, d and w
+	// are faster once you know them — but a modal reachable only by keys you
+	// have to already know is one people back out of, and this is the screen
+	// where prune is turned on.
+	cur int
+}
+
+// syncOptToggles are the modal's rows, in display order, each paired with the
+// field it flips. Written once so the keys, the cursor and the rendering cannot
+// drift apart.
+func (m *Model) syncOptToggles() []*bool {
+	return []*bool{&m.syncOpts.prune, &m.syncOpts.dryRun, &m.syncOpts.schedule}
 }
 
 // revPickerState is the revision picker's list and its own filter.

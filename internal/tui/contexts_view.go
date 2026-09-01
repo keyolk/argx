@@ -102,9 +102,43 @@ func (m *Model) contextNote(row contextRow, now time.Time) string {
 
 // renderContextDetail draws everything known about one context.
 func (m *Model) renderContextDetail(h int) string {
+	lines := m.contextDetailLines()
+	if lines == nil {
+		return m.emptyBody(h, "no context selected")
+	}
+
+	// Clamp before slicing, so scrolling past the end cannot show a blank
+	// panel with content still above it.
+	if max := len(lines) - h; m.pagerTop > max {
+		m.pagerTop = max
+	}
+	if m.pagerTop < 0 {
+		m.pagerTop = 0
+	}
+
+	out := make([]string, 0, h)
+	for i := m.pagerTop; i < len(lines) && len(out) < h; i++ {
+		out = append(out, truncate(lines[i], m.width))
+	}
+	// A panel that is taller than the screen has to say so, or the last
+	// permission silently does not exist as far as the reader can tell.
+	if len(lines) > h {
+		out[len(out)-1] = truncate(m.st.dim.Render(fmt.Sprintf(
+			"… %d more line(s) — j/k scrolls", len(lines)-m.pagerTop-h+1)), m.width)
+	}
+	return padBody(out, h)
+}
+
+// contextDetailLines builds the panel's content, before any windowing.
+//
+// It is separate from the rendering so G can ask how long the panel is without
+// the answer being a guess: the alternative was a cursor key that overshoots by
+// a made-up number and relies on the renderer to clamp it, which works right up
+// until a credential grows a field.
+func (m *Model) contextDetailLines() []string {
 	row := m.currentContext()
 	if row == nil {
-		return m.emptyBody(h, "no context selected")
+		return nil
 	}
 	now := time.Now()
 
@@ -218,27 +252,7 @@ func (m *Model) renderContextDetail(h int) string {
 			lines = append(lines, "  "+style.Render(mark)+" "+p.label)
 		}
 	}
-
-	// Clamp before slicing, so scrolling past the end cannot show a blank
-	// panel with content still above it.
-	if max := len(lines) - h; m.pagerTop > max {
-		m.pagerTop = max
-	}
-	if m.pagerTop < 0 {
-		m.pagerTop = 0
-	}
-
-	out := make([]string, 0, h)
-	for i := m.pagerTop; i < len(lines) && len(out) < h; i++ {
-		out = append(out, truncate(lines[i], m.width))
-	}
-	// A panel that is taller than the screen has to say so, or the last
-	// permission silently does not exist as far as the reader can tell.
-	if len(lines) > h {
-		out[len(out)-1] = truncate(m.st.dim.Render(fmt.Sprintf(
-			"… %d more line(s) — j/k scrolls", len(lines)-m.pagerTop-h+1)), m.width)
-	}
-	return padBody(out, h)
+	return lines
 }
 
 // trimErr shortens an error for a single line.
@@ -281,6 +295,12 @@ func (m *Model) handleContextsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.pagerTop -= m.bodyHeight() / 2
 		case "g", "home":
 			m.pagerTop = 0
+		case "G", "end":
+			// The panel scrolls like every other pager, so it ends like one
+			// too — G was the one motion missing here.
+			if max := len(m.contextDetailLines()) - m.bodyHeight(); max > 0 {
+				m.pagerTop = max
+			}
 		case "o":
 			if r := m.currentContext(); r != nil {
 				return m, m.openBrowserCmd([]string{m.contextURL(r.name)})

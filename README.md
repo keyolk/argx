@@ -160,6 +160,7 @@ has to be something you can build deliberately and inspect before acting.
 
 ```
 space   toggle this row and advance
+J K     extend the selection down / up — shift+↑↓ too
 v       range — move, then v again; esc cancels
 a       mark every visible row (never unmarks)
 A       clear the visible marks; again for those the filter hides
@@ -169,6 +170,37 @@ m       show only what is marked
 ```
 
 The same vocabulary works on the application list and on the resource tree.
+
+**Marking works while the filter prompt is open.** Narrowing and selecting are
+one activity — filter to `proj:web health:degraded`, take those rows, filter
+again, take those — and having to close the prompt in between means retyping the
+query to carry on, which is the exact thing `+` exists to make unnecessary.
+
+The keys are the arrows, because every letter in the prompt is query text:
+
+```
+→          mark this row and move down
+←          move back up and unmark
+shift+↑↓   extend the selection
+```
+
+`→` and `←` are an exact inverse pair, so a run marked one row too far is undone
+by pressing the other one rather than by remembering which row it was. This
+takes the arrows away from the text cursor on the two lists that mark; `ctrl+b`
+/ `ctrl+f` still move a character there and `alt+b` / `alt+f` a word. Everywhere
+else — the ApplicationSet list, a pager — the arrows keep editing the query,
+since there would be nothing to mark.
+
+`a`, `A`, `i` and `+` need no spelling of their own in here: `Enter` closes the
+prompt and *keeps* the query, so `a` on the list it leaves behind already means
+"all of what I just narrowed to", which is the case it exists for.
+
+`J` and `K` mark as they move, which is what shift+move does in every editor and
+file manager. Like `a`, they only ever mark — reversing direction over rows
+already marked is a no-op rather than an eraser, so overshooting is harmless.
+For a long run `v` is still the better tool, since it draws the range before
+taking it and can be cancelled; `J` exists because entering and leaving a mode
+is a lot of ceremony for three adjacent rows.
 
 `a` marks and **does not unmark**. A key that means "select all" when half the
 rows are marked and "clear" when they all are is a key whose effect you find out
@@ -204,12 +236,26 @@ inherit the mark of the one it replaced.
 ## Keys
 
 Everywhere: `j` `k` `↑` `↓` move, `ctrl+d` / `ctrl+u` half page, `g` / `G` top
-and bottom, `/` filter, `?` help.
+and bottom, `/` filter, `?` help. `Enter` `l` `→` drill in and `Esc` `h` `←` go
+back — on the RESOURCES tab `l` is already pod logs, so `→` carries that half of
+the pair there.
 
-**`q` and `ctrl+c` quit, from anywhere. `Esc` goes back one screen** — it is the
-only key that unwinds, and it never quits. `ctrl+c` works even inside a modal or
-mid-search, since it is the terminal's own interrupt; `q` is an ordinary letter,
-so it stays typeable while the filter prompt is open.
+The modals move too: the sync options are a list, so `j` / `k` walk them and
+`space` toggles the row under the cursor (`p`, `d` and `w` still work, and are
+faster once you know them). A confirmation has a cursor on **No**, which `h` /
+`l` move and `Enter` takes — `y` and `n` still answer outright. Enter never
+commits a fresh prompt, because every one of them guards something destructive.
+
+**`q` and `ctrl+c` quit, from anywhere. `Esc` unwinds one level** — it is the
+only key that unwinds, and it never quits. A level is not always a screen: a
+standing filter is one, and it is in front of the list it narrows, so `Esc` on a
+filtered list clears the filter and a second `Esc` leaves the screen. `m` (show
+only what is marked) is a level in front of that again. The marks themselves are
+never dropped by `Esc` — they are what the filtering was for.
+
+`ctrl+c` works even inside a modal or mid-search, since it is the terminal's own
+interrupt; `q` is an ordinary letter, so it stays typeable while the filter
+prompt is open.
 
 | key | applications | RESOURCES | HISTORY | DETAILS |
 |---|---|---|---|---|
@@ -232,7 +278,9 @@ so it stays typeable while the filter prompt is open.
 | `b` | — | — | roll back | — |
 | `[` `]` `Tab` | — | previous / next tab | ← | ← |
 | `1` `2` `3` | — | pick a tab | ← | ← |
-| `A` | toggle 15s auto-refresh | — | — | — |
+| `J` `K` | extend the selection (shift+↑↓) | ← | — | — |
+| `→` `←` `shift+↑↓` | mark / unmark, while the filter prompt is open | ← | — | — |
+| `F` | follow — 15s auto-refresh | — | — | — |
 | `E` | show unreachable servers | — | — | — |
 | `S` | application sets | — | — | — |
 | `w` | — | sync windows | ← | ← |
@@ -563,6 +611,29 @@ diff shows a deleted block's opening and closing braces on the same side: the
 depth never balances, and a depth-based skip stops after one line.
 
 ## Diff
+
+### It is the diff Argo CD computed
+
+argx diffs the two documents the server itself compared:
+`normalizedLiveState` against `predictedLiveState`, the same pair the Argo CD
+web UI asks the `managed-resources` endpoint for.
+
+That pair is the whole correctness of this view. `targetState` — the obvious
+choice, and the wrong one — is the desired manifest as it came out of git,
+*before* `spec.ignoreDifferences`, the resource overrides and the built-in
+normalizers ran. `predictedLiveState` is what the controller produced by putting
+that manifest through all of them and merging it against the live object.
+Comparing a normalized live side against an un-normalized desired side compares
+two documents that were never meant to match: every field somebody wrote an
+`ignoreDifferences` to silence, and every default the API server filled in, comes
+back as drift. An application Argo CD calls Synced reads as Synced here.
+
+Hook resources are left out, as they are in the web UI — a Job that ran once
+during a sync is not drift, and listing it buries the changes that are.
+
+The endpoint does not populate its own `diff` field, so the patch text is
+computed locally from those two documents; what is local is the *rendering*, not
+the comparison.
 
 ### Side by side
 

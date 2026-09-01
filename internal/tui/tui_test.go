@@ -45,11 +45,35 @@ func key(s string) tea.KeyMsg {
 	case "esc":
 		return tea.KeyMsg{Type: tea.KeyEsc}
 	case " ":
-		return tea.KeyMsg{Type: tea.KeySpace}
+		// The real terminal reader carries the rune alongside the type, and the
+		// filter prompt reads Runes — a KeySpace without one is a space that
+		// marks but cannot be typed, which no keyboard produces.
+		return tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}}
 	case "up":
 		return tea.KeyMsg{Type: tea.KeyUp}
 	case "down":
 		return tea.KeyMsg{Type: tea.KeyDown}
+	case "left":
+		return tea.KeyMsg{Type: tea.KeyLeft}
+	case "right":
+		return tea.KeyMsg{Type: tea.KeyRight}
+	case "tab":
+		return tea.KeyMsg{Type: tea.KeyTab}
+	case "shift+up":
+		return tea.KeyMsg{Type: tea.KeyShiftUp}
+	case "shift+down":
+		return tea.KeyMsg{Type: tea.KeyShiftDown}
+	}
+	// alt+<rune> is a modifier, not five characters of text. Building it as
+	// runes produced a key whose String() happened to read back as "alt+a"
+	// while carrying "alt+a" as its content — so it matched a binding *and*
+	// would have typed itself into a filter, and a test using it proved
+	// neither.
+	if rest, ok := strings.CutPrefix(s, "alt+"); ok && len([]rune(rest)) == 1 {
+		if rest == " " {
+			return tea.KeyMsg{Type: tea.KeySpace, Runes: []rune{' '}, Alt: true}
+		}
+		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(rest), Alt: true}
 	}
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 }
