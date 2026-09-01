@@ -269,6 +269,7 @@ prompt is open.
 | `e` | events | — | — | events |
 | `D` | — | diff the whole application | — | — |
 | `s` `D` | in a diff: side by side / your own diff tool ||||
+| `H` | in a diff: pair hash-suffixed resources (on by default) ||||
 | `l` `L` | — | pod logs | — | — |
 | `e` | — | a shell in the container | — | — |
 | `n` `N` | next / previous match in a manifest or diff |||
@@ -634,6 +635,47 @@ during a sync is not drift, and listing it buries the changes that are.
 The endpoint does not populate its own `diff` field, so the patch text is
 computed locally from those two documents; what is local is the *rendering*, not
 the comparison.
+
+### Resources whose names carry a hash
+
+A ConfigMap or Secret named for its own content — `app-config-a1b2c3` — gets a
+new name every time the content changes. That is deliberate: it stops two
+deployments from sharing a mutable object mid-rollout. But it means the server
+describes an *edit* as two unrelated resources, one created and one pruned, and
+a faithful diff shows two whole manifests where you wanted the three lines that
+actually changed.
+
+argx pairs them back up, matched by the name they share once the hash is
+removed, and rewrites both names to that base so the name itself does not read
+as the change:
+
+```
+=== ConfigMap prod/app-config  (hash rotated: app-config-a1b2c3 → app-config-d4e5f6)
+   "data": {
+-    "level": "info"
++    "level": "debug"
+   }
+```
+
+A rotation that changed nothing but the name is omitted entirely.
+
+This mirrors [argodiff](https://github.com/sendbird/argodiff)'s `--smart-hash`,
+down to the same pattern (`^(.+)-([a-f0-9]{6,10}|[a-z0-9]{6,10})$`) and the same
+kinds (ConfigMap, Secret, ExternalSecret) — two tools looking at one cluster and
+disagreeing about what changed is worse than either rule being slightly wrong.
+Where several candidates share a base name the partner is chosen by sort order
+rather than by whichever map key came up first, so the pairing is the same
+answer twice in a row; the candidate that was not paired still renders on its
+own rather than being silently dropped.
+
+**`H` turns it off.** A pairing is a *claim* — that these two differently-named
+objects are one resource — inferred from a name pattern, so the two documents it
+was made from have to stay reachable. When it is off and there was something to
+pair, the status line says so.
+
+What this does not do: a Deployment mounting `app-config-a1b2c3` still shows as
+changed, because its manifest genuinely does still name the old ConfigMap.
+Collapsing that too would mean rewriting references inside unrelated resources.
 
 ### Side by side
 

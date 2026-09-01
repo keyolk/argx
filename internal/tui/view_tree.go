@@ -275,6 +275,11 @@ func (m *Model) helpLines() []string {
 			{"tab", "complete the word under the cursor"},
 		}},
 		{"diffs", []row{
+			{"H", "pair resources whose names carry a content hash —"},
+			{"", "a rotated ConfigMap reads as the edit it is rather"},
+			{"", "than as a create and a prune of two objects. On by"},
+			{"", "default; H shows the two documents it inferred from"},
+			{"", "(the Deployment mounting it still shows separately)"},
 			{"s", "side by side — the old and new value on one row"},
 			{"", "needs 100 columns; below that it stays unified"},
 			{"D", "hand the two documents to your own diff tool"},

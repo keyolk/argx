@@ -208,6 +208,23 @@ func (m *Model) handlePagerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		return m, m.diffToolCmd()
+	case "H":
+		// Pairing off. A pairing is a *claim* — that these two differently-named
+		// objects are one resource — inferred from a name pattern, so the
+		// reader has to be able to see the two documents it was made from. Only
+		// in the diff view: it is the only place the claim is made.
+		if m.screen != screenDiff {
+			return m, nil
+		}
+		m.smartHash = !m.smartHash
+		m.pagerTop = 0
+		if m.smartHash {
+			m.setToast("pairing hash-suffixed resources")
+		} else {
+			m.setToast("showing hash-suffixed resources as created and pruned")
+		}
+		m.rerenderDiff()
+		return m, nil
 	case "M":
 		// The bookkeeping fields, back on. They are hidden by default because
 		// they bury everything else, not because they never matter.

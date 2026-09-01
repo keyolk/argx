@@ -42,11 +42,43 @@ type diffSides struct {
 // Resources are concatenated with a header apiece, matching what the unified
 // view shows, so the external tool sees the same comparison the reader just
 // asked for rather than one resource out of several.
-func collectSides(items []argocd.ResourceDiff, want map[string]bool, appName string) *diffSides {
+func collectSides(items []argocd.ResourceDiff, want map[string]bool, appName string, smartHash bool) *diffSides {
 	var live, desired strings.Builder
 	n := 0
+
+	// The pairing the unified view applied, applied here too: handing the tool
+	// a rotated ConfigMap as two whole documents would be a different
+	// comparison from the one on screen.
+	var paired map[string]bool
+	if smartHash {
+		var pairs []hashPair
+		pairs, paired = pairHashed(items)
+		for _, p := range pairs {
+			if want != nil && !want[itemKey(p.desired)] && !want[itemKey(p.live)] {
+				continue
+			}
+			l, d := p.sides()
+			if l == d {
+				continue
+			}
+			head := fmt.Sprintf("# %s %s/%s  (%s -> %s)\n",
+				groupKind(p.desired.Group, p.desired.Kind), p.desired.Namespace,
+				p.base, p.live.Name, p.desired.Name)
+			live.WriteString(head)
+			desired.WriteString(head)
+			live.WriteString(l)
+			live.WriteString("\n\n")
+			desired.WriteString(d)
+			desired.WriteString("\n\n")
+			n++
+		}
+	}
+
 	for _, it := range items {
 		if want != nil && !want[diffKey(it.Group, it.Kind, it.Namespace, it.Name)] {
+			continue
+		}
+		if paired[itemKey(it)] {
 			continue
 		}
 		// The same pair the unified view diffs, so the external tool is handed

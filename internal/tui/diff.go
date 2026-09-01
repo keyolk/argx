@@ -72,12 +72,41 @@ func nullToEmpty(s string) string {
 }
 
 // renderDiff turns managed-resources entries into unified-diff text.
-func renderDiff(items []argocd.ResourceDiff, want map[string]bool) []string {
+//
+// smartHash pairs resources whose names carry a content hash, so a rotated
+// ConfigMap reads as the edit it is rather than as a create and a prune of two
+// unrelated objects. See smarthash.go.
+func renderDiff(items []argocd.ResourceDiff, want map[string]bool, smartHash bool) []string {
 	var out []string
 	changed := 0
+
+	var paired map[string]bool
+	if smartHash {
+		var pairs []hashPair
+		pairs, paired = pairHashed(items)
+		for _, p := range pairs {
+			if want != nil && !want[itemKey(p.desired)] && !want[itemKey(p.live)] {
+				continue
+			}
+			live, target := p.sides()
+			if live == target {
+				// The name was the only difference — the rotation carried no
+				// content change, so there is nothing here to read.
+				continue
+			}
+			changed++
+			out = append(out, p.header())
+			out = append(out, unifiedDiff(live, target)...)
+			out = append(out, "")
+		}
+	}
+
 	for _, it := range items {
 		if want != nil && !want[diffKey(it.Group, it.Kind, it.Namespace, it.Name)] {
 			continue
+		}
+		if paired[itemKey(it)] {
+			continue // already shown as one half of a pair
 		}
 		live, target, ok := diffPair(it)
 		if !ok || live == target {
@@ -248,4 +277,34 @@ func lcsOps(a, b []string) []diffOp {
 		ops = append(ops, diffOp{' ', fmt.Sprintf("... (diff truncated at %d lines)", maxLines)})
 	}
 	return ops
+}
+
+// rerenderDiff redraws the current diff from the response it was built from.
+//
+// Toggling how a diff is presented must not re-ask the server: the answer could
+// have changed in between, and the reader would be looking at a different
+// comparison than the one they pressed a key to re-present.
+func (m *Model) rerenderDiff() {
+	if m.diffItems == nil {
+		return
+	}
+	m.pager = renderDiff(m.diffItems, m.diffWant, m.smartHash)
+	name := ""
+	if m.app != nil {
+		name = m.app.Name()
+	}
+	m.pagerSides = collectSides(m.diffItems, m.diffWant, name, m.smartHash)
+}
+
+// hashPairsAvailable reports whether the current diff has anything to pair.
+//
+// It is what stops the status line from announcing that pairing is off on a
+// diff where pairing would change nothing — a standing note about an
+// inapplicable mode is how a status line stops being read.
+//
+// The answer is computed once per response rather than per frame: this is on
+// the render path, and re-pairing a large application's resources sixty times a
+// second to decide whether to print eight words is work nobody asked for.
+func (m *Model) hashPairsAvailable() bool {
+	return m.diffHasPairs
 }
