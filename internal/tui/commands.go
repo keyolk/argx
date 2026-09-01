@@ -43,6 +43,12 @@ type pagerMsg struct {
 	// diff tool can be handed the originals rather than argx's rendering of
 	// them. Nil for anything that is not a diff.
 	sides *diffSides
+	// items is the managed-resources response the diff was rendered from, kept
+	// so toggling how it is rendered does not re-ask the server. Nil for
+	// anything that is not a diff.
+	items []argocd.ResourceDiff
+	// want is the resource filter the diff was narrowed by, if any.
+	want map[string]bool
 }
 
 type actionMsg struct {
@@ -111,6 +117,9 @@ func (m *Model) loadAppDiffCmd(app argocd.Application) tea.Cmd {
 		return func() tea.Msg { return pagerMsg{id: id, err: err} }
 	}
 	ctx := m.ctx
+	// Read here rather than inside the command: the model must not be touched
+	// from the goroutine the command runs on.
+	smart := m.smartHash
 	return func() tea.Msg {
 		c, cancel := context.WithTimeout(ctx, 60*time.Second)
 		defer cancel()
@@ -121,8 +130,9 @@ func (m *Model) loadAppDiffCmd(app argocd.Application) tea.Cmd {
 		return pagerMsg{
 			id:    id,
 			title: "diff · " + app.Name(),
-			lines: renderDiff(items, nil),
-			sides: collectSides(items, nil, app.Name()),
+			lines: renderDiff(items, nil, smart),
+			sides: collectSides(items, nil, app.Name(), smart),
+			items: items,
 		}
 	}
 }
@@ -144,6 +154,7 @@ func (m *Model) loadResourceDiffCmd(app argocd.Application, nodes []argocd.Node)
 		want[diffKey(n.Group, n.Kind, n.Namespace, n.Name)] = true
 	}
 	title := fmt.Sprintf("diff · %s · %d resource(s)", app.Name(), len(nodes))
+	smart := m.smartHash
 
 	return func() tea.Msg {
 		c, cancel := context.WithTimeout(ctx, 60*time.Second)
@@ -154,8 +165,9 @@ func (m *Model) loadResourceDiffCmd(app argocd.Application, nodes []argocd.Node)
 		}
 		return pagerMsg{
 			id: id, title: title,
-			lines: renderDiff(items, want),
-			sides: collectSides(items, want, app.Name()),
+			lines: renderDiff(items, want, smart),
+			sides: collectSides(items, want, app.Name(), smart),
+			items: items, want: want,
 		}
 	}
 }

@@ -198,6 +198,16 @@ type Model struct {
 	// tool can be handed the two documents rather than argx's rendering. Nil
 	// for anything that is not a diff.
 	pagerSides *diffSides
+	// diffItems is the managed-resources response the current diff was built
+	// from, with the resource filter it was narrowed by. Kept so re-rendering
+	// the same data — pairing on or off — costs nothing and cannot disagree
+	// with what is on screen by having re-asked in between.
+	diffItems []argocd.ResourceDiff
+	diffWant  map[string]bool
+	// diffHasPairs records whether that response held anything the hash pairing
+	// would join, so the status line can say when the mode is off and relevant
+	// without re-pairing on every frame.
+	diffHasPairs bool
 
 	// sxs lays the diff out in two columns instead of as a unified patch. Off
 	// by default: a unified diff is what people expect from the word "diff",
@@ -218,6 +228,13 @@ type Model struct {
 	// noiseKeys. Off by default: they are 39% of a real pod manifest and bury
 	// everything else.
 	showNoise bool
+
+	// smartHash pairs resources whose names carry a content hash, so a rotated
+	// ConfigMap reads as an edit rather than as a create and a prune. On by
+	// default, matching argodiff, and toggled with H because a pairing is a
+	// claim about two objects being one and the reader has to be able to check
+	// it. See smarthash.go.
+	smartHash bool
 
 	// ---- contexts ----
 	//
@@ -347,6 +364,7 @@ func New(ctx context.Context, fleet *argocd.Fleet, cfg *config.Config) *Model {
 		appMarks:   map[string]bool{},
 		treeMarks:  map[string]bool{},
 		visualFrom: -1,
+		smartHash:  true,
 		width:      80,
 		height:     24,
 	}

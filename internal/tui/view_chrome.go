@@ -204,6 +204,11 @@ func (m *Model) renderStatus() string {
 					"side by side needs %d columns (s)", sxsMinWidth)))
 			}
 		}
+		if m.screen == screenDiff && !m.smartHash && m.hashPairsAvailable() {
+			// Only when it would actually change what is on screen: a standing
+			// note about a mode that makes no difference here is noise.
+			parts = append(parts, m.st.warn.Render("hash pairing off (H)"))
+		}
 		if n := m.noiseHidden(); n > 0 {
 			// An absent field should never be a mystery: the count says how
 			// much is hidden, and M is how to see it.
@@ -369,7 +374,8 @@ func (m *Model) renderFooter() string {
 		if m.screen == screenDiff {
 			// The diff view has two more, and they are the ones nobody guesses.
 			hints = []string{"j/k scroll", "s side-by-side", "D diff tool",
-				"/ search", "n/N match", "M noise", "esc back", "q quit"}
+				"/ search", "n/N match", "M noise", "H hash pairing",
+				"esc back", "q quit"}
 		}
 	}
 
