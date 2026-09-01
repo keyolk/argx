@@ -389,3 +389,70 @@ func TestSpaceStillMarksAndAdvances(t *testing.T) {
 		t.Error("space on a marked row should unmark it")
 	}
 }
+
+// ---- extending the selection with shift+move ----
+
+// J marks as it moves, which is what shift+move does in every editor and file
+// manager — and is what a reader tries before they try v.
+func TestExtendMarkGrowsTheSelection(t *testing.T) {
+	m := markModel(t, "a", "b", "c", "d")
+
+	press(t, m, "J", "J")
+	if got := markedNames(m); strings.Join(got, ",") != "a,b,c" {
+		t.Errorf("marked %v, want the three rows the cursor passed", got)
+	}
+	if m.appCur != 2 {
+		t.Errorf("cursor = %d, want 2 — extending moves it", m.appCur)
+	}
+}
+
+// It only ever marks. Reversing direction over rows already marked must not
+// erase them: a key that marks going one way and unmarks going the other is one
+// whose effect you find out by pressing it.
+func TestExtendMarkNeverUnmarks(t *testing.T) {
+	m := markModel(t, "a", "b", "c")
+
+	press(t, m, "J", "J", "K", "K")
+	if got := markedNames(m); strings.Join(got, ",") != "a,b,c" {
+		t.Errorf("marked %v — coming back must not unmark", got)
+	}
+}
+
+// The last row of a list must be reachable: stopping at the end without marking
+// the row under the cursor would leave one row this key cannot take.
+func TestExtendMarkTakesTheLastRow(t *testing.T) {
+	m := markModel(t, "a", "b")
+
+	press(t, m, "J", "J", "J")
+	if got := markedNames(m); strings.Join(got, ",") != "a,b" {
+		t.Errorf("marked %v, want both rows", got)
+	}
+	if m.appCur != 1 {
+		t.Errorf("cursor = %d, want it clamped to the last row", m.appCur)
+	}
+}
+
+// The arrows do what the letters do — the whole point of having both.
+func TestShiftArrowsExtendLikeJK(t *testing.T) {
+	m := markModel(t, "a", "b", "c")
+
+	press(t, m, "shift+down", "shift+down")
+	if got := markedNames(m); strings.Join(got, ",") != "a,b,c" {
+		t.Errorf("marked %v, want shift+down to extend like J", got)
+	}
+}
+
+// A key added to the shared mark vocabulary must not swallow a key one of the
+// lists already owns. A did exactly that to auto-refresh.
+func TestExtendKeysDoNotSwallowListKeys(t *testing.T) {
+	m := markModel(t, "a", "b")
+	before := m.autoRefresh
+
+	press(t, m, "F")
+	if m.autoRefresh == before {
+		t.Error("F should still toggle auto-refresh on the application list")
+	}
+	if len(m.appMarks) != 0 {
+		t.Errorf("F is not a mark key, but it marked %d row(s)", len(m.appMarks))
+	}
+}

@@ -515,7 +515,9 @@ func TestOverflowingModalKeepsItsControls(t *testing.T) {
 		}
 		m.confirm = confirmState{title: "Sync?", body: body}
 		out = m.View()
-		if !strings.Contains(out, "y confirm") {
+		// Both control lines survive: the choices are how the reader answers,
+		// and the hint below them is where the keys are named.
+		if !strings.Contains(out, "Yes") || !strings.Contains(out, "y/n outright") {
 			t.Errorf("%dx%d: the confirm modal dropped its controls:\n%s", w, h, out)
 		}
 		// 60 targets cannot fit any of these terminals, so this one must elide.
