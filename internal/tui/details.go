@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -126,6 +127,21 @@ func (m *Model) detailRows() []detailRow {
 
 	if a.Status.Health.Message != "" {
 		rows = append(rows, detailRow{kind: detailStatic, label: "health message", value: a.Status.Health.Message})
+	}
+
+	// When and by whom, above the phase: "who last touched this" is the question
+	// people bring to an application they did not deploy themselves, and having
+	// to read it out of the HISTORY tab made it a two-step answer.
+	if when, who, ok := a.LastSync(); ok {
+		rows = append(rows, detailRow{
+			kind: detailStatic, label: "last sync",
+			// Both forms, because they answer different questions: the absolute
+			// time is what goes in an incident timeline, and the age is what
+			// tells the reader whether this is recent without doing arithmetic.
+			value: when.Local().Format("2006-01-02 15:04:05") +
+				m.st.dim.Render("  ("+humanSince(time.Since(when))+" ago)"),
+		})
+		rows = append(rows, detailRow{kind: detailStatic, label: "  by", value: who})
 	}
 
 	if op := a.Status.OperationState; op != nil {

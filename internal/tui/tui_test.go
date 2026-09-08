@@ -533,12 +533,12 @@ func TestViewBelowMinimumShowsAMessage(t *testing.T) {
 func TestNarrowLayoutDropsColumnsRatherThanSqueezing(t *testing.T) {
 	m := newTestModel(t, "alpha")
 	m.width = 62
-	name, proj, dst, _ := m.appColumns()
-	if proj != 0 || dst != 0 {
-		t.Errorf("at 62 columns project/destination should be dropped, got %d/%d", proj, dst)
+	c := m.appColumns()
+	if c.proj != 0 || c.dst != 0 {
+		t.Errorf("at 62 columns project/destination should be dropped, got %d/%d", c.proj, c.dst)
 	}
-	if name < 12 {
-		t.Errorf("the name column should keep a usable width, got %d", name)
+	if c.name < 12 {
+		t.Errorf("the name column should keep a usable width, got %d", c.name)
 	}
 }
 

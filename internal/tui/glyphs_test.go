@@ -314,13 +314,13 @@ func TestColumnsStayAlignedAcrossIconSets(t *testing.T) {
 			m.applyAppFilter()
 			m.Update(tea.WindowSizeMsg{Width: w, Height: 20})
 
-			nameW, _, _, ctxW := m.appColumns()
-			wantCtx := 3 + 3 + nameW + 1
+			c := m.appColumns()
+			wantCtx := 3 + 3 + c.name + 1
 
 			lines := strings.Split(m.View(), "\n")
 			for r := 0; r < len(m.appRows); r++ {
 				line := lines[2+r]
-				if ctxW > 0 {
+				if c.ctx > 0 {
 					ctxName := m.apps[m.appRows[r]].Context
 					i := strings.Index(line, ctxName)
 					if i < 0 {

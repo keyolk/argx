@@ -67,6 +67,19 @@ func padRight(s string, w int) string {
 	return s + strings.Repeat(" ", d)
 }
 
+// padLeft pads to w display cells, right-aligning the content.
+//
+// Numbers are read against each other, so a column of them lines up on its
+// right edge — the units have to share a column or the magnitudes do not
+// compare.
+func padLeft(s string, w int) string {
+	d := w - lipgloss.Width(s)
+	if d <= 0 {
+		return s
+	}
+	return strings.Repeat(" ", d) + s
+}
+
 // shortRev abbreviates a git SHA, leaving non-SHA revisions (chart versions,
 // tags) intact.
 func shortRev(rev string) string {

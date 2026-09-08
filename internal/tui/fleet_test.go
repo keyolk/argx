@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -346,8 +347,8 @@ func TestContextColumnIsShownInFull(t *testing.T) {
 func TestContextColumnIsAbsentForOneServer(t *testing.T) {
 	m := fleetModel(t, map[string][]string{"sb-prod": {"web"}})
 
-	if _, _, _, ctxW := m.appColumns(); ctxW != 0 {
-		t.Errorf("a single-server session reserved %d cells for the context column", ctxW)
+	if c := m.appColumns(); c.ctx != 0 {
+		t.Errorf("a single-server session reserved %d cells for the context column", c.ctx)
 	}
 	if strings.Contains(m.View(), "CONTEXT") {
 		t.Errorf("a single-server session should not show a CONTEXT column:\n%s", m.View())
@@ -363,15 +364,15 @@ func TestNarrowLayoutKeepsTheContextColumn(t *testing.T) {
 	})
 	m.Update(tea.WindowSizeMsg{Width: 72, Height: 20})
 
-	name, proj, dst, ctxW := m.appColumns()
-	if ctxW == 0 {
+	c := m.appColumns()
+	if c.ctx == 0 {
 		t.Error("the context column must survive a narrow terminal")
 	}
-	if proj != 0 || dst != 0 {
-		t.Errorf("project/destination should be dropped first, got %d/%d", proj, dst)
+	if c.proj != 0 || c.dst != 0 {
+		t.Errorf("project/destination should be dropped first, got %d/%d", c.proj, c.dst)
 	}
-	if name < 12 {
-		t.Errorf("the name column should stay usable, got %d", name)
+	if c.name < 12 {
+		t.Errorf("the name column should stay usable, got %d", c.name)
 	}
 }
 
@@ -473,35 +474,41 @@ func TestColumnsLineUpWithTheHeader(t *testing.T) {
 		m.applyAppFilter()
 		m.Update(tea.WindowSizeMsg{Width: w, Height: 20})
 
-		nameW, projW, dstW, ctxW := m.appColumns()
+		c := m.appColumns()
 		// Where each column starts: cursor+mark+space, status letters+space.
-		wantCtx := 3 + 3 + nameW + 1
-		wantProj := wantCtx + ctxW + 1
-		wantDst := wantProj + projW + 1
+		wantCtx := 3 + 3 + c.name + 1
+		wantProj := wantCtx + c.ctx + 1
+		wantDst := wantProj + c.proj + 1
+		wantSynced := wantDst + c.dst + 1
 
 		lines := strings.Split(m.View(), "\n")
 		header := lines[1]
 
-		if ctxW > 0 {
+		if c.ctx > 0 {
 			if got := lipglossWidth(header[:strings.Index(header, "CONTEXT")]); got != wantCtx {
 				t.Errorf("w=%d: CONTEXT header starts at %d, want %d", w, got, wantCtx)
 			}
 		}
-		if projW > 0 {
+		if c.proj > 0 {
 			if got := lipglossWidth(header[:strings.Index(header, "PROJECT")]); got != wantProj {
 				t.Errorf("w=%d: PROJECT header starts at %d, want %d", w, got, wantProj)
 			}
 		}
-		if dstW > 0 {
+		if c.dst > 0 {
 			if got := lipglossWidth(header[:strings.Index(header, "DESTINATION")]); got != wantDst {
 				t.Errorf("w=%d: DESTINATION header starts at %d, want %d", w, got, wantDst)
+			}
+		}
+		if c.synced > 0 {
+			if got := lipglossWidth(header[:strings.Index(header, "SYNCED")]); got != wantSynced {
+				t.Errorf("w=%d: SYNCED header starts at %d, want %d", w, got, wantSynced)
 			}
 		}
 
 		// And every data row must agree with those positions.
 		for r := 0; r < len(m.appRows); r++ {
 			line := lines[2+r]
-			if ctxW > 0 {
+			if c.ctx > 0 {
 				i := strings.Index(line, m.apps[m.appRows[r]].Context)
 				if i < 0 {
 					t.Errorf("w=%d row %d: the context is missing from %q", w, r, line)
@@ -518,6 +525,69 @@ func TestColumnsLineUpWithTheHeader(t *testing.T) {
 			}
 		}
 	}
+}
+
+// The age column holds the word "syncing" while a sync is in flight, which is
+// wider than any age it ever renders. padLeft does not truncate an over-long
+// cell, so a column sized to the ages alone would push the revision one cell
+// right on whichever row happens to be syncing — alignment that breaks
+// depending on cluster state, which is the hardest kind to notice.
+func TestASyncingRowKeepsItsColumnWidth(t *testing.T) {
+	m := fleetModel(t, map[string][]string{"sb-prod": {"web", "api"}})
+	m.apps[0].Status.OperationState = &argocd.OperationState{
+		Phase:     "Running",
+		StartedAt: time.Now().Add(-30 * time.Second),
+	}
+	m.apps[1].Status.History = []argocd.RevisionHistory{{
+		DeployedAt:  time.Now().Add(-72 * time.Hour),
+		InitiatedBy: argocd.InitiatedBy{Username: "alice"},
+	}}
+	m.applyAppFilter()
+	m.Update(tea.WindowSizeMsg{Width: 130, Height: 20})
+
+	c := m.appColumns()
+	if c.synced == 0 {
+		t.Fatal("the age column should be present at 130 columns")
+	}
+
+	lines := strings.Split(m.View(), "\n")
+	header := lines[1]
+	want := lipglossWidth(header[:strings.Index(header, "REVISION")])
+
+	// The rendered rows carry style escapes and the revision's text is
+	// arbitrary, so the boundary is measured up to the end of the age cell
+	// rather than by searching for the revision itself.
+	for r := range m.appRows {
+		line := lines[2+r]
+		if got := lipglossWidth(line); got > 130 {
+			t.Errorf("row %d overflows at %d cells:\n%q", r, got, line)
+		}
+	}
+	if got := revisionStart(c); got != want {
+		t.Fatalf("the column budget puts the revision at %d, the header at %d", got, want)
+	}
+
+	// The syncing row's age cell must occupy exactly the column, so the
+	// revision after it lands where every other row's does.
+	if got := lipglossWidth(m.syncedCell(&m.apps[0], time.Now(), c.synced)); got != c.synced {
+		t.Errorf("a syncing row's age cell is %d cells wide, want %d", got, c.synced)
+	}
+	if got := lipglossWidth(m.syncedCell(&m.apps[1], time.Now(), c.synced)); got != c.synced {
+		t.Errorf("an aged row's age cell is %d cells wide, want %d", got, c.synced)
+	}
+}
+
+// revisionStart is where the revision column begins, computed from the column
+// widths: cursor+mark+space, status letters+space, the name, then a separator
+// before each column that survived the width.
+func revisionStart(c appCols) int {
+	off := 3 + 3 + c.name
+	for _, w := range []int{c.ctx, c.proj, c.dst, c.synced} {
+		if w > 0 {
+			off += 1 + w
+		}
+	}
+	return off + 1
 }
 
 // The revision is the last column and must stay inside its own budget: a cell
@@ -551,24 +621,24 @@ func TestColumnBudgetMatchesRealContent(t *testing.T) {
 	})
 	m.Update(tea.WindowSizeMsg{Width: 168, Height: 24})
 
-	name, proj, dst, _ := m.appColumns()
-	if proj > maxProjCol {
-		t.Errorf("project column is %d cells; it never needs more than %d", proj, maxProjCol)
+	c := m.appColumns()
+	if c.proj > maxProjCol {
+		t.Errorf("project column is %d cells; it never needs more than %d", c.proj, maxProjCol)
 	}
-	if name > maxNameCol {
-		t.Errorf("name column is %d cells; it never needs more than %d", name, maxNameCol)
+	if c.name > maxNameCol {
+		t.Errorf("name column is %d cells; it never needs more than %d", c.name, maxNameCol)
 	}
 	// Destination is the longest field in practice, so on a wide terminal it
 	// must get the largest share of what is left.
-	if dst <= name {
-		t.Errorf("destination got %d cells and name got %d — destination is the longer field", dst, name)
+	if c.dst <= c.name {
+		t.Errorf("destination got %d cells and name got %d — destination is the longer field", c.dst, c.name)
 	}
 	// Destination cannot always fit — a p75 value is 84 cells and a 168-column
 	// terminal has no room for that alongside name, context, and revision. What
 	// it must get is the largest remaining share, which the check above asserts,
 	// and enough to carry a cluster name plus the start of a namespace.
-	if dst < 48 {
-		t.Errorf("destination column is %d cells — too narrow to show a cluster and namespace", dst)
+	if c.dst < 48 {
+		t.Errorf("destination column is %d cells — too narrow to show a cluster and namespace", c.dst)
 	}
 }
 
