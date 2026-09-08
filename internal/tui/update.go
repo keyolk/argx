@@ -227,6 +227,16 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// Under a Korean input source the shortcut keys arrive as jamo (`q` -> `ㅂ`)
+	// and do nothing until the input source is switched back. Rewrite them to
+	// the Latin key at the same physical position -- but not while the filter
+	// prompt owns keys, where the jamo IS the query.
+	//
+	// The overlays below are all shortcuts (y/n, j/k, space), so they normalize.
+	if !m.filtering {
+		msg = normalizeCJKKey(msg)
+	}
+
 	// Overlays capture keys first: a modal that can be dismissed by keys that
 	// also act on the screen behind it is how people sync the wrong thing.
 	if m.overlay != overlayNone {
