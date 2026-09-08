@@ -5,6 +5,7 @@ package tui
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 
@@ -19,22 +20,28 @@ func (m *Model) renderApps() string {
 
 	// Column widths are computed from the terminal width every frame, so a
 	// resize re-lays out rather than truncating against a stale width.
-	nameW, projW, dstW, ctxW := m.appColumns()
+	c := m.appColumns()
+	// One clock reading for the whole frame, so two rows of the same age can
+	// never render as different ones.
+	now := time.Now()
 
 	lines := make([]string, 0, h)
 	// The header is assembled from the same widths as the rows, and dropped
 	// columns take their labels with them — a label left behind when its column
 	// is gone makes the header wider than the rows, and lipgloss then pads every
 	// line to that width.
-	head := padRight("  ST NAME", 3+3+nameW)
-	if ctxW > 0 {
-		head += " " + padRight("CONTEXT", ctxW)
+	head := padRight("  ST NAME", 3+3+c.name)
+	if c.ctx > 0 {
+		head += " " + padRight("CONTEXT", c.ctx)
 	}
-	if projW > 0 {
-		head += " " + padRight("PROJECT", projW)
+	if c.proj > 0 {
+		head += " " + padRight("PROJECT", c.proj)
 	}
-	if dstW > 0 {
-		head += " " + padRight("DESTINATION", dstW)
+	if c.dst > 0 {
+		head += " " + padRight("DESTINATION", c.dst)
+	}
+	if c.synced > 0 {
+		head += " " + padRight("SYNCED", c.synced)
 	}
 	head += " REVISION"
 	lines = append(lines, m.st.header.Render(truncate(head, m.width)))
@@ -70,7 +77,7 @@ func (m *Model) renderApps() string {
 		default:
 			nameStyle = lipgloss.NewStyle()
 		}
-		name := nameStyle.Render(padRight(truncate(a.Name(), nameW), nameW))
+		name := nameStyle.Render(padRight(truncate(a.Name(), c.name), c.name))
 
 		rev := m.revisionCell(a)
 
@@ -80,20 +87,26 @@ func (m *Model) renderApps() string {
 		}
 
 		line := cursor + mark + " " + sync + health + " " + name
-		if ctxW > 0 {
+		if c.ctx > 0 {
 			// The server is colored, not just named: at a glance the reader
 			// should see that a run of rows belongs to one Argo CD without
 			// reading the column.
 			ctxLabel := m.gl.prefix(m.gl.server) + a.Context
 			line += " " + m.ctxStyle(a.Context).Render(
-				padRight(truncate(ctxLabel, ctxW), ctxW))
+				padRight(truncate(ctxLabel, c.ctx), c.ctx))
 		}
-		if projW > 0 {
+		if c.proj > 0 {
 			proj := m.gl.prefix(m.gl.project) + a.Spec.Project
-			line += " " + m.st.dim.Render(padRight(truncate(proj, projW), projW))
+			line += " " + m.st.dim.Render(padRight(truncate(proj, c.proj), c.proj))
 		}
-		if dstW > 0 {
-			line += " " + m.st.dim.Render(padRight(truncate(dst, dstW), dstW))
+		if c.dst > 0 {
+			line += " " + m.st.dim.Render(padRight(truncate(dst, c.dst), c.dst))
+		}
+		if c.synced > 0 {
+			// Right-aligned, so the magnitudes line up: a column of ages is
+			// read by comparing them, and "4d" under "13h" only compares if
+			// the units share an edge.
+			line += " " + m.syncedCell(a, now, c.synced)
 		}
 		// The revision is truncated to its own column rather than left to the
 		// row-level cut: a cell that overruns pushes the row past the terminal
@@ -180,14 +193,37 @@ const (
 	// difference, and the row-level truncate then cut the revision off, which
 	// read as broken alignment.
 	revCol = 30
+	// syncedCol is the width of the age column. It is sized to the widest thing
+	// the column ever holds, which is not an age: humanSince tops out at five
+	// cells ("999mo"), but a sync in flight renders the word "syncing". A
+	// column narrower than its own contents does not truncate them — padLeft
+	// returns an over-long cell unchanged — it pushes the revision one cell
+	// right on that row alone, which reads as the alignment being broken by
+	// whichever application happens to be syncing.
+	syncedCol = 7
 )
+
+// appCols is the width of each column in the application list. Zero means the
+// column is dropped at this terminal width.
+//
+// A struct rather than four unnamed ints: the call site assigns them
+// positionally, and adding a fifth column to a positional return is how a width
+// silently lands in the wrong column.
+type appCols struct {
+	name   int
+	proj   int
+	dst    int
+	ctx    int
+	synced int
+}
 
 // appColumns splits the width between name, project, and destination, keeping
 // the name column dominant because it is what people scan.
-func (m *Model) appColumns() (name, proj, dst, ctx int) {
+func (m *Model) appColumns() (c appCols) {
 	// 3 for cursor+mark+space, 3 for status letters + space, revCol for the
-	// revision, and one separator space before each of ctx/proj/dst/rev.
+	// revision, and one separator space before each of ctx/proj/dst/synced/rev.
 	avail := m.width - 3 - 3 - revCol - 1
+	ctx := 0
 
 	if m.multiServer() {
 		// The context column is sized to the longest context name and taken off
@@ -207,18 +243,29 @@ func (m *Model) appColumns() (name, proj, dst, ctx int) {
 		}
 		avail -= ctx + 1
 	}
+	c.ctx = ctx
 
-	if avail < minNameCol+minProjCol+minDstCol+2 {
+	if avail < minNameCol+minProjCol+minDstCol+syncedCol+3 {
 		// Narrow terminal — a 60-column tmux split lands here. Give the whole
 		// budget to the name, keeping the context column: which server a row
-		// belongs to outranks its project on a narrow screen.
+		// belongs to outranks its project on a narrow screen. The age goes with
+		// the rest; at this width the name is already fighting for cells, and
+		// seven of them spent on an age the DETAILS tab spells out in full is
+		// a worse trade than a readable name.
 		if avail < 12 {
 			avail = 12
 		}
-		return avail, 0, 0, ctx
+		c.name = avail
+		return c
 	}
-	// Two separator spaces, before PROJECT and before DESTINATION.
-	avail -= 2
+	// Three separator spaces, before PROJECT, DESTINATION, and SYNCED.
+	avail -= 3
+	// The age is taken off the top rather than shared out. It is a fixed width
+	// that never grows, and it is the column that answers "has anything
+	// touched this lately" — the question the reader came with when the list is
+	// long enough that they cannot open every row.
+	c.synced = syncedCol
+	avail -= syncedCol
 
 	// The split is sized from what these fields actually hold, measured across
 	// a real fleet of ~3000 applications:
@@ -230,21 +277,71 @@ func (m *Model) appColumns() (name, proj, dst, ctx int) {
 	// So project is capped rather than given a percentage: a proportional share
 	// spent 20% of the row on a column whose contents are seven characters,
 	// and starved the destination that needed it.
-	proj = maxProjCol
-	if proj > avail/5 {
-		proj = avail / 5
+	c.proj = maxProjCol
+	if c.proj > avail/5 {
+		c.proj = avail / 5
 	}
-	rest := avail - proj
+	rest := avail - c.proj
 
-	name = rest * 40 / 100
-	if name > maxNameCol {
+	c.name = rest * 40 / 100
+	if c.name > maxNameCol {
 		// Past a point extra name width is wasted; give it back to the
 		// destination, which is the column that stays truncated longest.
-		name = maxNameCol
+		c.name = maxNameCol
 	}
-	dst = rest - name
-	return name, proj, dst, ctx
+	c.dst = rest - c.name
+	return c
 }
+
+// syncedCell renders how long ago the application last synced, right-aligned in
+// w cells.
+//
+// The age is what the column carries rather than a timestamp: a list is read by
+// comparing rows, and "13h" against "21d" compares at a glance where two
+// timestamps do not. The exact moment and the person who asked for it are in
+// DETAILS, one keypress away.
+//
+// It is colored by staleness, not by sync status — that is what the two glyphs
+// at the start of the row already say. What this column adds is drift: an
+// application nothing has synced in weeks is worth noticing even when it is
+// green, because it means what is running was decided a long time ago.
+func (m *Model) syncedCell(a *argocd.Application, now time.Time, w int) string {
+	when, _, ok := a.LastSync()
+	if !ok {
+		return m.st.dim.Render(padLeft("—", w))
+	}
+
+	// A sync in flight has no age worth reporting — it is happening now — and
+	// saying "0s" invites the reader to refresh until it changes.
+	if op := a.Status.OperationState; op != nil && op.Running() {
+		return m.st.warn.Render(padLeft("syncing", w))
+	}
+
+	d := now.Sub(when)
+	text := padLeft(humanSince(d), w)
+	switch {
+	case d >= staleAge:
+		return m.st.warn.Render(text)
+	case d < freshAge:
+		return m.st.success.Render(text)
+	default:
+		return m.st.dim.Render(text)
+	}
+}
+
+// Thresholds for the age column's coloring.
+//
+// An hour is what "just now" means for a deployment: long enough to cover a
+// sync the reader kicked off before switching windows, short enough that it
+// still means something happened this session.
+//
+// Thirty days is where an application stops being one nobody has needed to
+// change and becomes one nobody has looked at. Below it the age is dim, because
+// a healthy application syncing on its own schedule is not news.
+const (
+	freshAge = time.Hour
+	staleAge = 30 * 24 * time.Hour
+)
 
 func (m *Model) emptyAppsText() string {
 	if m.loading {

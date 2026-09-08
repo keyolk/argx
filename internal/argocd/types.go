@@ -43,29 +43,42 @@ type Application struct {
 // RevisionHistory is one past deployment of the application. Argo CD keeps a
 // bounded window of these, and their IDs are what a rollback targets.
 type RevisionHistory struct {
-	ID              int64     `json:"id"`
-	Revision        string    `json:"revision"`
-	Revisions       []string  `json:"revisions"`
-	Source          *Source   `json:"source"`
-	Sources         []Source  `json:"sources"`
-	DeployedAt      time.Time `json:"deployedAt"`
-	DeployStartedAt time.Time `json:"deployStartedAt"`
-	InitiatedBy     struct {
-		Username  string `json:"username"`
-		Automated bool   `json:"automated"`
-	} `json:"initiatedBy"`
+	ID              int64       `json:"id"`
+	Revision        string      `json:"revision"`
+	Revisions       []string    `json:"revisions"`
+	Source          *Source     `json:"source"`
+	Sources         []Source    `json:"sources"`
+	DeployedAt      time.Time   `json:"deployedAt"`
+	DeployStartedAt time.Time   `json:"deployStartedAt"`
+	InitiatedBy     InitiatedBy `json:"initiatedBy"`
 }
 
-// Who renders who triggered the deployment.
-func (h RevisionHistory) Who() string {
-	if h.InitiatedBy.Automated {
+// InitiatedBy records who set an operation off. Argo CD reports a username for
+// a person and a flag for the controller, and the two are mutually exclusive
+// only in practice — a self-healing sync carries the flag and no name.
+type InitiatedBy struct {
+	Username  string `json:"username"`
+	Automated bool   `json:"automated"`
+}
+
+// Who renders who set the operation off.
+//
+// "unknown" is not a bug: Argo CD only started recording initiatedBy on history
+// entries in 2.5, so a fleet with older control planes has deployments whose
+// author is genuinely not on record. Saying so beats attributing them to the
+// controller.
+func (i InitiatedBy) Who() string {
+	if i.Automated {
 		return "auto-sync"
 	}
-	if h.InitiatedBy.Username != "" {
-		return h.InitiatedBy.Username
+	if i.Username != "" {
+		return i.Username
 	}
 	return "unknown"
 }
+
+// Who renders who triggered the deployment.
+func (h RevisionHistory) Who() string { return h.InitiatedBy.Who() }
 
 // Rev is the revision this history entry deployed, preferring the per-source
 // list for multi-source applications.
@@ -91,11 +104,38 @@ type AutomatedSync struct {
 }
 
 // OperationState is the outcome of the most recent sync operation.
+//
+// Who asked for it lives one level down, in the operation the state describes,
+// rather than beside the phase — so reading it means going through Operation.
 type OperationState struct {
 	Phase      string    `json:"phase"`
 	Message    string    `json:"message"`
 	StartedAt  time.Time `json:"startedAt"`
 	FinishedAt time.Time `json:"finishedAt"`
+	Operation  Operation `json:"operation"`
+}
+
+// Operation is the request an OperationState reports on. Only the attribution
+// is modeled; the sync parameters are not something argx renders.
+type Operation struct {
+	InitiatedBy InitiatedBy `json:"initiatedBy"`
+}
+
+// When is the moment the operation reached its current state: when it finished,
+// or when it started if it is still running.
+//
+// A running sync has a zero finishedAt, and rendering that as the epoch — or as
+// "—" — hides the one operation a reader most wants timed.
+func (o *OperationState) When() time.Time {
+	if !o.FinishedAt.IsZero() {
+		return o.FinishedAt
+	}
+	return o.StartedAt
+}
+
+// Running reports whether the operation is still in flight.
+func (o *OperationState) Running() bool {
+	return o.Phase == "Running" || o.Phase == "Terminating"
 }
 
 // Condition is an application-level condition, e.g. ComparisonError.
@@ -151,6 +191,36 @@ func (a *Application) AutoSync() (on, prune, selfHeal bool) {
 	}
 	au := a.Spec.SyncPolicy.Automated
 	return true, au.Prune, au.SelfHeal
+}
+
+// LastSync reports when this application last synced and who asked for it.
+//
+// Two records answer that, and they answer different questions. The operation
+// state is the last sync *attempt* — it is what "last sync" means to someone
+// asking whether anything has touched this application recently, and it is the
+// only one that exists for a sync that failed. The history is the last
+// deployment that actually landed, and it survives when the operation state has
+// been cleared.
+//
+// The operation state wins when both are present, because a failed sync ten
+// minutes ago is more relevant than a successful one last week — reporting the
+// old success would say the application is quiet when it is not.
+//
+// ok is false when neither is on record: an application that has never synced.
+func (a *Application) LastSync() (when time.Time, who string, ok bool) {
+	if op := a.Status.OperationState; op != nil {
+		if t := op.When(); !t.IsZero() {
+			return t, op.Operation.InitiatedBy.Who(), true
+		}
+	}
+	if h := a.Status.History; len(h) > 0 {
+		// History is stored oldest-first, so the last element is the newest.
+		last := h[len(h)-1]
+		if !last.DeployedAt.IsZero() {
+			return last.DeployedAt, last.Who(), true
+		}
+	}
+	return time.Time{}, "", false
 }
 
 // PrimarySource returns the source to display. Multi-source apps show their

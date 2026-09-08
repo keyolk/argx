@@ -1,6 +1,9 @@
 package argocd
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // node builds a tree node for the flatten tests.
 func node(uid, kind, name string, parents ...string) Node {
@@ -184,5 +187,153 @@ func TestAutoSyncFlags(t *testing.T) {
 	on, prune, heal := a.AutoSync()
 	if !on || !prune || !heal {
 		t.Errorf("AutoSync() = %v,%v,%v, want all true", on, prune, heal)
+	}
+}
+
+// ---- LastSync ----
+
+// Two records answer "when did this last sync", and they answer different
+// questions. The operation state is the last *attempt* — the only record a
+// failed sync leaves — and the history is the last deployment that landed.
+func TestLastSyncPrefersTheOperationOverTheHistory(t *testing.T) {
+	landed := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
+	attempted := time.Date(2026, 3, 8, 9, 0, 0, 0, time.UTC)
+
+	var a Application
+	a.Status.History = []RevisionHistory{{
+		DeployedAt:  landed,
+		InitiatedBy: InitiatedBy{Username: "alice"},
+	}}
+	a.Status.OperationState = &OperationState{
+		Phase:      "Failed",
+		StartedAt:  attempted,
+		FinishedAt: attempted.Add(time.Minute),
+		Operation:  Operation{InitiatedBy: InitiatedBy{Username: "bob"}},
+	}
+
+	when, who, ok := a.LastSync()
+	if !ok {
+		t.Fatal("an application with both records must report a last sync")
+	}
+	// A sync that failed a week ago outranks one that succeeded a week before
+	// it: reporting the old success would say the application is quiet.
+	if want := attempted.Add(time.Minute); !when.Equal(want) {
+		t.Errorf("LastSync() = %v, want the operation's finish %v", when, want)
+	}
+	if who != "bob" {
+		t.Errorf("LastSync() attributed the sync to %q, want bob", who)
+	}
+}
+
+func TestLastSyncFallsBackToTheHistory(t *testing.T) {
+	landed := time.Date(2026, 3, 1, 9, 0, 0, 0, time.UTC)
+
+	var a Application
+	a.Status.History = []RevisionHistory{{
+		DeployedAt:  landed,
+		InitiatedBy: InitiatedBy{Username: "alice"},
+	}}
+
+	when, who, ok := a.LastSync()
+	if !ok {
+		t.Fatal("a cleared operation state must not hide a recorded deployment")
+	}
+	if !when.Equal(landed) {
+		t.Errorf("LastSync() = %v, want %v", when, landed)
+	}
+	if who != "alice" {
+		t.Errorf("LastSync() attributed the deployment to %q, want alice", who)
+	}
+}
+
+// History is stored oldest-first, so the newest entry is the last one. Reading
+// it from the front reports a deployment weeks stale as the current one.
+func TestLastSyncTakesTheNewestHistoryEntry(t *testing.T) {
+	old := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+	recent := time.Date(2026, 3, 1, 0, 0, 0, 0, time.UTC)
+
+	var a Application
+	a.Status.History = []RevisionHistory{
+		{ID: 1, DeployedAt: old, InitiatedBy: InitiatedBy{Username: "alice"}},
+		{ID: 2, DeployedAt: recent, InitiatedBy: InitiatedBy{Automated: true}},
+	}
+
+	when, who, _ := a.LastSync()
+	if !when.Equal(recent) {
+		t.Errorf("LastSync() = %v, want the newest entry %v", when, recent)
+	}
+	if who != "auto-sync" {
+		t.Errorf("LastSync() = %q, want auto-sync", who)
+	}
+}
+
+// A sync in flight has a zero finishedAt. Reporting that verbatim dates the
+// operation to the epoch — the one operation a reader most wants timed.
+func TestLastSyncTimesARunningSyncFromItsStart(t *testing.T) {
+	started := time.Date(2026, 3, 8, 9, 0, 0, 0, time.UTC)
+
+	var a Application
+	a.Status.OperationState = &OperationState{
+		Phase:     "Running",
+		StartedAt: started,
+		Operation: Operation{InitiatedBy: InitiatedBy{Automated: true}},
+	}
+
+	when, who, ok := a.LastSync()
+	if !ok {
+		t.Fatal("a running sync is a last sync")
+	}
+	if !when.Equal(started) {
+		t.Errorf("LastSync() = %v, want the start %v", when, started)
+	}
+	if who != "auto-sync" {
+		t.Errorf("LastSync() = %q, want auto-sync", who)
+	}
+	if !a.Status.OperationState.Running() {
+		t.Error("Running() must be true for a Running phase")
+	}
+	if (&OperationState{Phase: "Succeeded"}).Running() {
+		t.Error("a finished operation must not report as running")
+	}
+}
+
+// An application that has never synced has neither record, and saying "0s ago"
+// about it would be a lie the column cannot walk back.
+func TestLastSyncReportsNothingWhenThereIsNoRecord(t *testing.T) {
+	var a Application
+	if _, _, ok := a.LastSync(); ok {
+		t.Error("an application that has never synced must not report a last sync")
+	}
+
+	// An operation state can exist with no timestamps at all — a pending
+	// operation the controller has not started. It is not a sync yet.
+	a.Status.OperationState = &OperationState{Phase: "Running"}
+	if _, _, ok := a.LastSync(); ok {
+		t.Error("an operation with no timestamps must not report a last sync")
+	}
+}
+
+// Argo CD only started recording initiatedBy on history entries in 2.5, so a
+// fleet with older control planes has deployments whose author is genuinely not
+// on record. Attributing them to the controller would be a guess.
+func TestWhoDistinguishesAnAbsentAuthorFromTheController(t *testing.T) {
+	tests := []struct {
+		by   InitiatedBy
+		want string
+	}{
+		{InitiatedBy{Automated: true}, "auto-sync"},
+		{InitiatedBy{Username: "alice"}, "alice"},
+		{InitiatedBy{}, "unknown"},
+		// The flag wins: a self-healing sync carries it and no name, and a
+		// payload with both is the controller acting on a stored credential.
+		{InitiatedBy{Username: "alice", Automated: true}, "auto-sync"},
+	}
+	for _, tt := range tests {
+		if got := tt.by.Who(); got != tt.want {
+			t.Errorf("Who(%+v) = %q, want %q", tt.by, got, tt.want)
+		}
+		if got := (RevisionHistory{InitiatedBy: tt.by}).Who(); got != tt.want {
+			t.Errorf("RevisionHistory.Who(%+v) = %q, want %q", tt.by, got, tt.want)
+		}
 	}
 }

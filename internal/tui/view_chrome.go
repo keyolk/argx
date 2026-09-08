@@ -111,6 +111,14 @@ func (m *Model) renderStatus() string {
 				}
 				parts = append(parts, m.st.dim.Render(s))
 			}
+			// Who last moved this application, on every tab. It is the fact a
+			// reader most often wants while doing something else — deciding
+			// whether to sync, reading a diff — and DETAILS is the wrong place
+			// to have to go for it mid-action.
+			if when, who, ok := a.LastSync(); ok {
+				parts = append(parts, m.st.dim.Render(fmt.Sprintf(
+					"synced %s ago by %s", humanSince(time.Since(when)), who)))
+			}
 		}
 		if m.tab == tabResources && (!m.treeFilt.empty() || m.filtering) {
 			parts = append(parts, m.renderFilter(m.treeFilt.String()))
