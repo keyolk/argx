@@ -25,6 +25,10 @@ func (m *Model) renderTree() string {
 		return m.emptyBody(h, txt)
 	}
 
+	if m.treeGraphActive() {
+		return m.renderTreeGraph()
+	}
+
 	kindW := m.treeKindWidth()
 
 	lines := make([]string, 0, h)
@@ -262,6 +266,9 @@ func (m *Model) helpLines() []string {
 			{"e", "a shell in the container, through Argo CD"},
 			{"", "a multi-container pod asks which one first"},
 			{"s", "sync the marked resources"},
+			{"t", "graph view — Argo CD UI style, app fanning out to its"},
+			{"", "resources left to right. Falls back to the list while a"},
+			{"", "filter or marked-only view is narrowing the tree"},
 			{"/", "filter — see below"},
 		}},
 		{"application filter", []row{

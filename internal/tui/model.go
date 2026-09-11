@@ -167,6 +167,16 @@ type Model struct {
 	// treeMarks keys on resource UID, which is stable across refreshes of the
 	// same live object; a name-based key would silently re-mark a recreated pod.
 	treeMarks map[string]bool
+	// treeGraph draws the tree left-to-right, Argo CD UI style, instead of
+	// indented. It is a rendering choice only — treeCur still walks treeRows in
+	// the same DFS order, so the filter, marks, diff and sync all work
+	// unchanged; only what the cursor's position looks like on screen differs.
+	treeGraph bool
+	// graphTop is the graph view's scroll offset, in the graph's own row
+	// coordinates rather than treeRows' list index — a leaf-only row count that
+	// does not match the list one row for one, since a chain of single-child
+	// nodes shares a row and a branching node spans several.
+	graphTop int
 
 	// ---- HISTORY tab ----
 	histCur int

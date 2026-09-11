@@ -359,7 +359,7 @@ func (m *Model) renderFooter() string {
 		default:
 			hints = []string{"space/a/A mark", "J/K extend", "v range",
 				"enter manifest", "d diff", "D app diff", "l logs", "e shell",
-				m.syncHint(), "w windows", "esc back", "q quit"}
+				"t graph", m.syncHint(), "w windows", "esc back", "q quit"}
 		}
 	case screenAppSets:
 		hints = []string{"enter apps", "y spec", "o browser", "S applications", "/ filter", "? help", "q quit"}

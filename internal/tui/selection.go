@@ -56,6 +56,21 @@ func (m *Model) clampScroll() {
 		m.treeTop = 0
 	}
 
+	if row, total, ok := m.currentGraphLine(); ok {
+		if row < m.graphTop {
+			m.graphTop = row
+		}
+		if row >= m.graphTop+h {
+			m.graphTop = row - h + 1
+		}
+		if max := total - h; m.graphTop > max && max > 0 {
+			m.graphTop = max
+		}
+	}
+	if m.graphTop < 0 {
+		m.graphTop = 0
+	}
+
 	if m.histCur >= len(m.histRows()) {
 		m.histCur = len(m.histRows()) - 1
 	}
