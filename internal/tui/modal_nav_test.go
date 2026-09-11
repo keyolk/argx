@@ -183,8 +183,10 @@ func TestRightArrowDrillsInOnEveryList(t *testing.T) {
 	}
 }
 
-// ← goes back wherever esc does, so the pair is symmetric on every screen a
-// reader can drill into.
+// ← goes back wherever esc does, on every screen except the application
+// view: there, only esc leaves, so a resource whose name happens to contain
+// "h" — or a stray left arrow while browsing the tree — can never bounce the
+// reader back out to the list.
 func TestLeftArrowGoesBack(t *testing.T) {
 	m := newTestModel(t, "alpha")
 	press(t, m, "enter")
@@ -192,7 +194,11 @@ func TestLeftArrowGoesBack(t *testing.T) {
 		t.Fatalf("setup: expected to be in the application view, got %v", m.screen)
 	}
 	press(t, m, "left")
+	if m.screen != screenApp {
+		t.Errorf("← inside the application view should not leave it, screen = %v", m.screen)
+	}
+	press(t, m, "esc")
 	if m.screen != screenApps {
-		t.Errorf("← should go back to the list, screen = %v", m.screen)
+		t.Errorf("esc should go back to the list, screen = %v", m.screen)
 	}
 }

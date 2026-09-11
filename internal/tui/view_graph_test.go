@@ -135,11 +135,14 @@ func TestGraphLeftMovesToParent(t *testing.T) {
 		t.Fatalf("left from a replica set should land on its deployment, got %v", got)
 	}
 
-	// At a root, h/← has nowhere to go inside the graph, so it falls through
-	// to the shared "back one screen" binding instead of doing nothing.
+	// At a root, h/← has nowhere to go inside the graph, and it must not fall
+	// through to leaving the application view — only Esc does that.
 	m.prev = []screen{screenApps}
 	press(t, m, "h")
-	if m.screen != screenApps {
-		t.Fatalf("h at a root node should fall through to leaving the application view, screen = %v", m.screen)
+	if m.screen != screenApp {
+		t.Fatalf("h at a root node should do nothing, not leave the application view, screen = %v", m.screen)
+	}
+	if got := m.currentNode(); got == nil || got.Name != "web" {
+		t.Fatalf("h at a root node should leave the cursor in place, got %v", got)
 	}
 }

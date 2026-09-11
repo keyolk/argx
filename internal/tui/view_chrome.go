@@ -360,6 +360,12 @@ func (m *Model) renderFooter() string {
 			hints = []string{"space/a/A mark", "J/K extend", "v range",
 				"enter manifest", "d diff", "D app diff", "l logs", "e shell",
 				"t graph", m.syncHint(), "w windows", "esc back", "q quit"}
+			if m.treeGraphActive() {
+				// h/← means something different only here — moving toward the
+				// root inside the graph rather than leaving the screen — so it
+				// is worth naming once it actually does that.
+				hints = append([]string{"h parent"}, hints...)
+			}
 		}
 	case screenAppSets:
 		hints = []string{"enter apps", "y spec", "o browser", "S applications", "/ filter", "? help", "q quit"}
