@@ -204,7 +204,9 @@ func (m *Model) helpLines() []string {
 			{"g / G", "top / bottom"},
 			{"enter, l, →", "drill in — l is logs on the RESOURCES tab,"},
 			{"", "where → carries the pair on its own"},
-			{"esc, h, ←", "back one screen"},
+			{"esc, h, ←", "back one screen — except the application view,"},
+			{"", "which only leaves on esc; h/← there moves inside the"},
+			{"", "graph instead of doubling as an exit"},
 			{"q, ctrl+c", "quit, from anywhere"},
 			{"/", "filter (esc clears, enter keeps)"},
 			{"esc on a filtered list", "clear the filter — a standing query is a"},
@@ -256,7 +258,7 @@ func (m *Model) helpLines() []string {
 			{"w", "sync windows"},
 			{"o", "open the application in browser"},
 			{"r", "reload"},
-			{"esc, h", "back to the list"},
+			{"esc", "back to the list"},
 		}},
 		{"RESOURCES tab", []row{
 			{"enter, →", "live manifest"},
@@ -269,6 +271,7 @@ func (m *Model) helpLines() []string {
 			{"t", "graph view — Argo CD UI style, app fanning out to its"},
 			{"", "resources left to right. Falls back to the list while a"},
 			{"", "filter or marked-only view is narrowing the tree"},
+			{"h, ←", "move to the current resource's parent, in the graph"},
 			{"/", "filter — see below"},
 		}},
 		{"application filter", []row{

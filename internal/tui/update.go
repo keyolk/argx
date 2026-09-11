@@ -428,20 +428,21 @@ func (m *Model) handleAppKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "h", "left":
-		// In the graph view, h/← steps toward the root instead of leaving the
-		// screen: j/k already walk the tree in DFS order, which reaches every
-		// row but never "the parent of this one" directly, and that is the one
-		// direction the graph draws a visible line toward. Only when there is
-		// nowhere left to go — the cursor is already on a root — does h fall
-		// through to its usual meaning of backing out of the application.
+		// h/← no longer leaves the application view — only Esc does that now,
+		// so a resource name that happens to contain "h" or a stray left-arrow
+		// while browsing the tree can never bounce the reader back out to the
+		// list. Inside the graph it still moves toward the root, since j/k
+		// already walk the tree in DFS order, which reaches every node but
+		// never "the parent of this one" directly — that is the one direction
+		// the graph draws a visible line toward. At a root there is nowhere
+		// left to go, so the key does nothing rather than falling through to
+		// an exit nobody asked it to have.
 		if m.tab == tabResources && m.treeGraphActive() {
 			if r, ok := m.graphParentRow(); ok {
 				m.treeCur = r
 				m.clampScroll()
-				return m, nil
 			}
 		}
-		m.pop()
 		return m, nil
 	}
 
