@@ -20,14 +20,14 @@ import (
 //	ctx:prod   c:prod      the Argo CD server
 //	label:env=prod         a label key and value
 //	l:env                  a label key, any value
-//	-l:env                 applications *without* the label
+//	!l:env                 applications *without* the label
 //	proj:platform  p:...   the AppProject
 //	ns:web                 destination namespace
 //	cluster:apne2          destination cluster
 //	sync:outofsync         sync status
 //	health:degraded        health status
-//	-ctx:prod              a `-` prefix negates any field, name included
-//	-web                   name/project/destination/status don't contain "web"
+//	!ctx:prod              a `!` prefix negates any field, name included
+//	!web                   name/project/destination/status don't contain "web"
 type appFilterQuery struct {
 	raw string
 
@@ -48,7 +48,7 @@ type appFilterQuery struct {
 type labelTerm struct {
 	key   string
 	value string
-	// negate inverts the match, so `-l:env` finds applications with no env
+	// negate inverts the match, so `!l:env` finds applications with no env
 	// label — the way to find the ones a labelling convention missed.
 	negate bool
 	// hasValue distinguishes `l:env=` (an empty value) from `l:env` (any).
@@ -195,7 +195,7 @@ func (t labelTerm) match(labels map[string]string) bool {
 
 // appFilterHint is shown under the filter prompt so the fields are
 // discoverable without opening help.
-const appFilterHint = "name · label:env=prod · ctx: · proj: · ns: · cluster: · sync: · health: · -ctx:"
+const appFilterHint = "name · label:env=prod · ctx: · proj: · ns: · cluster: · sync: · health: · !ctx:"
 
 // ---- completion ----
 
@@ -302,11 +302,11 @@ func (c *completionSource) complete(query string, cursor int) (cands []string, s
 	end = cursor
 	word := strings.ToLower(string(r[start:end]))
 
-	// A negation prefix is carried through untouched so `-l:env` completes on
+	// A negation prefix is carried through untouched so `!l:env` completes on
 	// the field after it.
 	neg := ""
-	if strings.HasPrefix(word, "-") {
-		neg, word = "-", word[1:]
+	if strings.HasPrefix(word, "!") {
+		neg, word = "!", word[1:]
 	}
 
 	field, value, ok := strings.Cut(word, ":")
