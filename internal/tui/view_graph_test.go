@@ -6,7 +6,7 @@ import (
 )
 
 // The graph view must show the application name, every resource name, and the
-// left-to-right connectors joining them.
+// boxes joined by connector lines.
 func TestGraphRendersAppAndResources(t *testing.T) {
 	m := fixtureModel(t, 120, 30)
 	fixtureTree(t, m)
@@ -18,7 +18,8 @@ func TestGraphRendersAppAndResources(t *testing.T) {
 		"web-frontend", // the application, on the left
 		"Deployment", "ReplicaSet", "Pod", "Service", "ConfigMap",
 		"web-6d9f-abc12", "web-6d9f-def34",
-		"┌─", "┬─", "└─", // fan-out and fan-in connectors
+		"╭", "╮", "╰", "╯", // box corners
+		"┤", // web-6d9f-abc12 and web-6d9f-def34 fan out from the same replica set
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("the graph view is missing %q:\n%s", want, out)
@@ -37,8 +38,8 @@ func TestGraphFallsBackToListWhenFiltered(t *testing.T) {
 	m.applyTreeFilter()
 
 	out := m.renderTree()
-	if strings.Contains(out, "┌─") || strings.Contains(out, "┬─") {
-		t.Errorf("a filtered graph view drew connectors instead of falling back to the list:\n%s", out)
+	if strings.Contains(out, "╭") {
+		t.Errorf("a filtered graph view drew boxes instead of falling back to the list:\n%s", out)
 	}
 	if !strings.Contains(out, "web-6d9f-abc12") {
 		t.Errorf("the filtered list is missing the resource it matched:\n%s", out)
@@ -79,10 +80,10 @@ func TestGraphTogglePreservesLineBudget(t *testing.T) {
 	}
 }
 
-// Moving the cursor onto a resource with siblings must not desync the
-// viewport: the graph's own row (a leaf-per-row count) has to stay in lock
-// step with clampScroll, or the cursor can scroll off screen while treeCur
-// still reports a valid row.
+// Moving the cursor down must not desync the viewport: the graph's own line
+// count (boxes are several lines tall) has to stay in lock step with
+// clampScroll, or the cursor can scroll off screen while treeCur still
+// reports a valid row.
 func TestGraphCursorStaysInViewport(t *testing.T) {
 	m := fixtureModel(t, 120, 6) // a short body so scrolling actually engages
 	fixtureTree(t, m)
@@ -91,13 +92,54 @@ func TestGraphCursorStaysInViewport(t *testing.T) {
 
 	for m.treeCur < len(m.treeRows)-1 {
 		m.moveTree(1)
-		row, total, ok := m.currentGraphRow()
+		line, total, ok := m.currentGraphLine()
 		if !ok {
-			t.Fatalf("currentGraphRow() not ok at treeCur=%d", m.treeCur)
+			t.Fatalf("currentGraphLine() not ok at treeCur=%d", m.treeCur)
 		}
-		if row < m.graphTop || row >= m.graphTop+m.bodyHeight() {
-			t.Fatalf("cursor row %d out of viewport [%d, %d) at treeCur=%d (total=%d)",
-				row, m.graphTop, m.graphTop+m.bodyHeight(), m.treeCur, total)
+		if line < m.graphTop || line >= m.graphTop+m.bodyHeight() {
+			t.Fatalf("cursor line %d out of viewport [%d, %d) at treeCur=%d (total=%d)",
+				line, m.graphTop, m.graphTop+m.bodyHeight(), m.treeCur, total)
 		}
+	}
+}
+
+// h and ← must step the cursor to the current node's parent while the graph
+// is active — the one direction plain DFS order (what j/k walk) cannot reach
+// directly, since a node's parent precedes it in that order but is not
+// necessarily adjacent to it.
+func TestGraphLeftMovesToParent(t *testing.T) {
+	m := fixtureModel(t, 120, 30)
+	fixtureTree(t, m)
+	m.screen = screenApp
+	m.tab = tabResources
+	m.treeGraph = true
+	m.clampScroll()
+
+	// Move onto the second pod (web-6d9f-def34), a grandchild of the
+	// deployment through the replica set.
+	for m.currentNode() == nil || m.currentNode().Name != "web-6d9f-def34" {
+		prev := m.treeCur
+		press(t, m, "j")
+		if m.treeCur == prev {
+			t.Fatal("never reached web-6d9f-def34 walking down the tree")
+		}
+	}
+
+	press(t, m, "h")
+	if got := m.currentNode(); got == nil || got.Name != "web-6d9f" {
+		t.Fatalf("h from a pod should land on its replica set, got %v", got)
+	}
+
+	press(t, m, "left")
+	if got := m.currentNode(); got == nil || got.Name != "web" {
+		t.Fatalf("left from a replica set should land on its deployment, got %v", got)
+	}
+
+	// At a root, h/← has nowhere to go inside the graph, so it falls through
+	// to the shared "back one screen" binding instead of doing nothing.
+	m.prev = []screen{screenApps}
+	press(t, m, "h")
+	if m.screen != screenApps {
+		t.Fatalf("h at a root node should fall through to leaving the application view, screen = %v", m.screen)
 	}
 }

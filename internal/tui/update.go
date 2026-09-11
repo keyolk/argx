@@ -428,6 +428,19 @@ func (m *Model) handleAppKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 	case "h", "left":
+		// In the graph view, h/← steps toward the root instead of leaving the
+		// screen: j/k already walk the tree in DFS order, which reaches every
+		// row but never "the parent of this one" directly, and that is the one
+		// direction the graph draws a visible line toward. Only when there is
+		// nowhere left to go — the cursor is already on a root — does h fall
+		// through to its usual meaning of backing out of the application.
+		if m.tab == tabResources && m.treeGraphActive() {
+			if r, ok := m.graphParentRow(); ok {
+				m.treeCur = r
+				m.clampScroll()
+				return m, nil
+			}
+		}
 		m.pop()
 		return m, nil
 	}

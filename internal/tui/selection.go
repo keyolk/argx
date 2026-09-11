@@ -56,7 +56,7 @@ func (m *Model) clampScroll() {
 		m.treeTop = 0
 	}
 
-	if row, total, ok := m.currentGraphRow(); ok {
+	if row, total, ok := m.currentGraphLine(); ok {
 		if row < m.graphTop {
 			m.graphTop = row
 		}
