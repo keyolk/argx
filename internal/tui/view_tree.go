@@ -282,6 +282,7 @@ func (m *Model) helpLines() []string {
 			{"ctx: proj: ns:", "server, project, destination namespace"},
 			{"cluster: sync:", "destination cluster, sync status"},
 			{"health:degraded", "health status"},
+			{"-ctx:prod, -web", "a `-` prefix negates any field, name included"},
 			{"tab", "complete the word under the cursor"},
 		}},
 		{"diffs", []row{
@@ -311,6 +312,7 @@ func (m *Model) helpLines() []string {
 			{"ns:prod", "namespace"},
 			{"label:app=web", "a label — only kinds Argo CD reports networking for"},
 			{"", "terms are ANDed: kind:pod status:degraded"},
+			{"-kind:pod, -web", "a `-` prefix negates any field, name included"},
 		}},
 		{"HISTORY tab", []row{
 			{"enter, b", "roll back to this deployment"},
@@ -330,6 +332,7 @@ func (m *Model) helpLines() []string {
 			{"/", "filter — gen:git, status:error, ctx:, proj:, ns:, label:"},
 			{"", "a broken generator shows up here and nowhere else:"},
 			{"", "the applications it would have made do not exist"},
+			{"", "a `-` prefix negates any of these, name included"},
 		}},
 		{"sync windows", []row{
 			{"w", "the schedules that allow or block syncing"},
