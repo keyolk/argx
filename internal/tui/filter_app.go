@@ -26,16 +26,18 @@ import (
 //	cluster:apne2          destination cluster
 //	sync:outofsync         sync status
 //	health:degraded        health status
+//	-ctx:prod              a `-` prefix negates any field, name included
+//	-web                   name/project/destination/status don't contain "web"
 type appFilterQuery struct {
 	raw string
 
-	free    []string
-	ctx     []string
-	project []string
-	ns      []string
-	cluster []string
-	sync    []string
-	health  []string
+	free    []strTerm
+	ctx     []strTerm
+	project []strTerm
+	ns      []strTerm
+	cluster []strTerm
+	sync    []strTerm
+	health  []strTerm
 
 	// labels are key/value requirements. An empty value means "the key is
 	// present, whatever it holds".
@@ -56,18 +58,15 @@ type labelTerm struct {
 // parseAppFilter splits a query into its per-field terms.
 func parseAppFilter(q string) appFilterQuery {
 	f := appFilterQuery{raw: q}
-	for _, term := range strings.Fields(strings.ToLower(q)) {
-		negate := false
-		if strings.HasPrefix(term, "-") && len(term) > 1 {
-			negate, term = true, term[1:]
-		}
+	for _, raw := range strings.Fields(strings.ToLower(q)) {
+		term, negate := splitNegate(raw)
 
 		field, value, ok := strings.Cut(term, ":")
 		if !ok || value == "" {
 			// A trailing `label:` the user is still typing is treated as free
 			// text rather than as a term that matches nothing, so the list
 			// narrows as they type instead of emptying and refilling.
-			f.free = append(f.free, strings.TrimSuffix(term, ":"))
+			f.free = append(f.free, strTerm{strings.TrimSuffix(term, ":"), negate})
 			continue
 		}
 
@@ -78,21 +77,21 @@ func parseAppFilter(q string) appFilterQuery {
 				key: k, value: v, negate: negate, hasValue: hasValue,
 			})
 		case "ctx", "context", "c":
-			f.ctx = append(f.ctx, value)
+			f.ctx = append(f.ctx, strTerm{value, negate})
 		case "proj", "project", "p":
-			f.project = append(f.project, value)
+			f.project = append(f.project, strTerm{value, negate})
 		case "ns", "namespace", "n":
-			f.ns = append(f.ns, value)
+			f.ns = append(f.ns, strTerm{value, negate})
 		case "cluster", "dest", "destination":
-			f.cluster = append(f.cluster, value)
+			f.cluster = append(f.cluster, strTerm{value, negate})
 		case "sync":
-			f.sync = append(f.sync, value)
+			f.sync = append(f.sync, strTerm{value, negate})
 		case "health":
-			f.health = append(f.health, value)
+			f.health = append(f.health, strTerm{value, negate})
 		default:
 			// An unknown prefix is far likelier to be a name containing a colon
 			// than a typo'd field.
-			f.free = append(f.free, term)
+			f.free = append(f.free, strTerm{term, negate})
 		}
 	}
 	return f
@@ -127,39 +126,39 @@ func (f appFilterQuery) match(a *argocd.Application) bool {
 			src.Chart,
 		}, " "))
 		for _, t := range f.free {
-			if !strings.Contains(hay, t) {
+			if !t.containsMatch(hay) {
 				return false
 			}
 		}
 	}
 
 	for _, t := range f.ctx {
-		if !strings.Contains(strings.ToLower(a.Context), t) {
+		if !t.containsMatch(strings.ToLower(a.Context)) {
 			return false
 		}
 	}
 	for _, t := range f.project {
-		if !strings.Contains(strings.ToLower(a.Spec.Project), t) {
+		if !t.containsMatch(strings.ToLower(a.Spec.Project)) {
 			return false
 		}
 	}
 	for _, t := range f.ns {
-		if !strings.Contains(strings.ToLower(a.Spec.Destination.Namespace), t) {
+		if !t.containsMatch(strings.ToLower(a.Spec.Destination.Namespace)) {
 			return false
 		}
 	}
 	for _, t := range f.cluster {
-		if !strings.Contains(strings.ToLower(a.Spec.Destination.Cluster()), t) {
+		if !t.containsMatch(strings.ToLower(a.Spec.Destination.Cluster())) {
 			return false
 		}
 	}
 	for _, t := range f.sync {
-		if !strings.HasPrefix(strings.ToLower(a.Status.Sync.Status), t) {
+		if !t.prefixMatch(strings.ToLower(a.Status.Sync.Status)) {
 			return false
 		}
 	}
 	for _, t := range f.health {
-		if !strings.HasPrefix(strings.ToLower(a.Status.Health.Status), t) {
+		if !t.prefixMatch(strings.ToLower(a.Status.Health.Status)) {
 			return false
 		}
 	}
@@ -196,7 +195,7 @@ func (t labelTerm) match(labels map[string]string) bool {
 
 // appFilterHint is shown under the filter prompt so the fields are
 // discoverable without opening help.
-const appFilterHint = "name · label:env=prod · ctx: · proj: · ns: · cluster: · sync: · health:"
+const appFilterHint = "name · label:env=prod · ctx: · proj: · ns: · cluster: · sync: · health: · -ctx:"
 
 // ---- completion ----
 

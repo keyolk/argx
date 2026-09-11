@@ -23,6 +23,8 @@ import (
 //	label:app=web  a label key and value
 //	l:app          a label key, any value
 //	kind:pod web   both — terms are ANDed
+//	-kind:pod      not a pod — a `-` prefix negates any field, name included
+//	-web           name does not contain "web"
 //
 // Labels are only available for the kinds Argo CD reports networking for —
 // Pods, Services, Ingresses. A label term therefore excludes every other kind
@@ -37,28 +39,58 @@ type resourceFilter struct {
 	// back unchanged.
 	raw string
 
-	name   []string
-	kind   []string
-	status []string
-	ns     []string
+	name   []strTerm
+	kind   []strTerm
+	status []strTerm
+	ns     []strTerm
 	labels []labelTerm
+}
+
+// strTerm is one field requirement: a value to compare against, and whether
+// the comparison is negated. Every non-label field in both the resource and
+// application filters shares this shape, so a `-` prefix means the same thing
+// wherever it appears.
+type strTerm struct {
+	value  string
+	negate bool
+}
+
+// containsMatch reports whether t is satisfied by a haystack, honoring
+// negation: a positive term needs the substring present, a negated one needs
+// it absent.
+func (t strTerm) containsMatch(haystack string) bool {
+	return strings.Contains(haystack, t.value) != t.negate
+}
+
+// prefixMatch is containsMatch for fields matched by prefix rather than
+// substring — kind and status, where a substring match would make
+// "kind:set" wrongly find "StatefulSet".
+func (t strTerm) prefixMatch(haystack string) bool {
+	return strings.HasPrefix(haystack, t.value) != t.negate
+}
+
+// splitNegate strips a leading `-` and reports whether it was there. The `-`
+// only counts as negation when something follows it — a bare "-" is a name
+// search for a literal hyphen, which is rare but not nothing.
+func splitNegate(s string) (string, bool) {
+	if strings.HasPrefix(s, "-") && len(s) > 1 {
+		return s[1:], true
+	}
+	return s, false
 }
 
 // parseResourceFilter splits a query into its per-field terms.
 func parseResourceFilter(q string) resourceFilter {
 	f := resourceFilter{raw: q}
-	for _, term := range strings.Fields(strings.ToLower(q)) {
+	for _, raw := range strings.Fields(strings.ToLower(q)) {
+		term, negate := splitNegate(raw)
 		field, value, ok := strings.Cut(term, ":")
 		if !ok || value == "" {
 			// An unprefixed term, or a trailing "kind:" the user is still
 			// typing: treat it as a name search rather than dropping it, so the
 			// list narrows as they type instead of jumping when the colon lands.
-			f.name = append(f.name, strings.TrimSuffix(term, ":"))
+			f.name = append(f.name, strTerm{strings.TrimSuffix(term, ":"), negate})
 			continue
-		}
-		negate := false
-		if strings.HasPrefix(field, "-") && len(field) > 1 {
-			negate, field = true, field[1:]
 		}
 
 		switch field {
@@ -68,17 +100,17 @@ func parseResourceFilter(q string) resourceFilter {
 				key: k, value: v, negate: negate, hasValue: hasValue,
 			})
 		case "kind", "k":
-			f.kind = append(f.kind, value)
+			f.kind = append(f.kind, strTerm{value, negate})
 		case "status", "health", "s", "h":
-			f.status = append(f.status, value)
+			f.status = append(f.status, strTerm{value, negate})
 		case "ns", "namespace", "n":
-			f.ns = append(f.ns, value)
+			f.ns = append(f.ns, strTerm{value, negate})
 		case "name":
-			f.name = append(f.name, value)
+			f.name = append(f.name, strTerm{value, negate})
 		default:
 			// An unknown prefix is far more likely to be a name containing a
 			// colon than a typo'd field, so search the whole term by name.
-			f.name = append(f.name, term)
+			f.name = append(f.name, strTerm{term, negate})
 		}
 	}
 	return f
@@ -100,16 +132,18 @@ func (f resourceFilter) match(n argocd.Node) bool {
 		return true
 	}
 	for _, t := range f.name {
-		if !strings.Contains(strings.ToLower(n.Name), t) {
+		if !t.containsMatch(strings.ToLower(n.Name)) {
 			return false
 		}
 	}
 	for _, t := range f.kind {
 		// Prefix rather than substring: "kind:set" should not match
 		// "StatefulSet" when the user meant a kind starting with "set". The
-		// group is checked too, so "kind:apps" finds everything in apps/.
-		if !strings.HasPrefix(strings.ToLower(n.Kind), t) &&
-			!strings.HasPrefix(strings.ToLower(n.Group), t) {
+		// group is checked too, so "kind:apps" finds everything in apps/, and
+		// negation excludes a resource matching on either.
+		kind, group := strings.ToLower(n.Kind), strings.ToLower(n.Group)
+		hit := strings.HasPrefix(kind, t.value) || strings.HasPrefix(group, t.value)
+		if hit == t.negate {
 			return false
 		}
 	}
@@ -120,12 +154,12 @@ func (f resourceFilter) match(n argocd.Node) bool {
 		if h == "" {
 			h = "none"
 		}
-		if !strings.HasPrefix(h, t) {
+		if !t.prefixMatch(h) {
 			return false
 		}
 	}
 	for _, t := range f.ns {
-		if !strings.Contains(strings.ToLower(n.Namespace), t) {
+		if !t.containsMatch(strings.ToLower(n.Namespace)) {
 			return false
 		}
 	}
@@ -139,4 +173,4 @@ func (f resourceFilter) match(n argocd.Node) bool {
 
 // resourceFilterHint is shown under the filter prompt so the field prefixes are
 // discoverable without opening help.
-const resourceFilterHint = "name · kind:pod · status:degraded · ns:prod · label:app=web"
+const resourceFilterHint = "name · kind:pod · status:degraded · ns:prod · label:app=web · -kind:pod"

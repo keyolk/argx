@@ -121,3 +121,78 @@ func TestFilterWithOnlySeparatorsIsNotEmpty(t *testing.T) {
 		t.Error("a non-blank query is not empty even if it parses oddly")
 	}
 }
+
+// A `-` prefix negates any field, name included — not just labels.
+func TestFilterNegation(t *testing.T) {
+	pod := fnode("Pod", "web-abc12", "prod", "Degraded")
+	dep := fnode("Deployment", "web", "prod", "Healthy")
+	svc := fnode("Service", "api", "staging", "")
+
+	tests := []struct {
+		query string
+		pod   bool
+		dep   bool
+		svc   bool
+	}{
+		{"-web", false, false, true},
+		{"-kind:pod", false, true, true},
+		{"-status:degraded", false, true, true},
+		{"-ns:prod", false, false, true},
+		// Negated and positive terms combine like any two terms — ANDed.
+		{"kind:pod -status:healthy", true, false, false},
+	}
+	for _, tt := range tests {
+		f := parseResourceFilter(tt.query)
+		if got := f.match(pod); got != tt.pod {
+			t.Errorf("%q vs Pod = %v, want %v", tt.query, got, tt.pod)
+		}
+		if got := f.match(dep); got != tt.dep {
+			t.Errorf("%q vs Deployment = %v, want %v", tt.query, got, tt.dep)
+		}
+		if got := f.match(svc); got != tt.svc {
+			t.Errorf("%q vs Service = %v, want %v", tt.query, got, tt.svc)
+		}
+	}
+}
+
+// A bare "-" with nothing after it is not a negation marker — it is a name
+// search for a literal hyphen, which some resource names actually contain.
+func TestFilterBareHyphenIsNotNegation(t *testing.T) {
+	n := fnode("Pod", "web-abc12", "prod", "Healthy")
+	if !parseResourceFilter("-").match(n) {
+		t.Error("a bare '-' should search the name for a literal hyphen, not negate everything")
+	}
+}
+
+// The application filter's `-` prefix negates any field the same way the
+// resource filter's does, name included.
+func TestAppFilterNegation(t *testing.T) {
+	var web, api argocd.Application
+	web.Metadata.Name = "web"
+	web.Context = "sb-prod"
+	web.Status.Sync.Status = "Synced"
+	api.Metadata.Name = "api"
+	api.Context = "dl-prod"
+	api.Status.Sync.Status = "OutOfSync"
+
+	tests := []struct {
+		query string
+		web   bool
+		api   bool
+	}{
+		{"-web", false, true},
+		{"-ctx:sb", false, true},
+		{"-sync:synced", false, true},
+		// Negated and positive terms combine like any two terms — ANDed.
+		{"ctx:prod -sync:outofsync", true, false},
+	}
+	for _, tt := range tests {
+		f := parseAppFilter(tt.query)
+		if got := f.match(&web); got != tt.web {
+			t.Errorf("%q vs web = %v, want %v", tt.query, got, tt.web)
+		}
+		if got := f.match(&api); got != tt.api {
+			t.Errorf("%q vs api = %v, want %v", tt.query, got, tt.api)
+		}
+	}
+}
