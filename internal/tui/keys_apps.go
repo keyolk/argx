@@ -39,7 +39,7 @@ func (m *Model) handleAppsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if a := m.currentApp(); a != nil {
 			m.push(screenApp)
 			m.tab = tabResources
-			m.treeCur, m.treeTop, m.treeFilt = 0, 0, resourceFilter{}
+			m.treeCur, m.treeTop, m.graphTop, m.treeFilt = 0, 0, 0, resourceFilter{}
 			m.histCur, m.histTop, m.detailCur = 0, 0, 0
 			m.tree, m.treeRows = nil, nil
 			m.treeMarks = map[string]bool{}
@@ -119,9 +119,25 @@ func (m *Model) handleTreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "ctrl+u", "pgup":
 		m.moveTree(-m.bodyHeight() / 2)
 	case "g", "home":
-		m.treeCur, m.treeTop = 0, 0
+		m.treeCur, m.treeTop, m.graphTop = 0, 0, 0
 	case "G", "end":
 		m.treeCur = len(m.treeRows) - 1
+		m.clampScroll()
+
+	case "t":
+		// Rendering only: the cursor keeps walking treeRows in the same DFS
+		// order either way, so toggling mid-browse does not lose the reader's
+		// place the way switching screens would.
+		m.treeGraph = !m.treeGraph
+		if m.treeGraph {
+			if !m.treeFilt.empty() || m.markedOnly {
+				m.setToast("graph view — clear the filter to see it (list view while filtered)")
+			} else {
+				m.setToast("graph view")
+			}
+		} else {
+			m.setToast("list view")
+		}
 		m.clampScroll()
 
 	case "enter", "right":
