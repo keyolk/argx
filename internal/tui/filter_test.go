@@ -122,7 +122,7 @@ func TestFilterWithOnlySeparatorsIsNotEmpty(t *testing.T) {
 	}
 }
 
-// A `-` prefix negates any field, name included — not just labels.
+// A `!` prefix negates any field, name included — not just labels.
 func TestFilterNegation(t *testing.T) {
 	pod := fnode("Pod", "web-abc12", "prod", "Degraded")
 	dep := fnode("Deployment", "web", "prod", "Healthy")
@@ -134,12 +134,12 @@ func TestFilterNegation(t *testing.T) {
 		dep   bool
 		svc   bool
 	}{
-		{"-web", false, false, true},
-		{"-kind:pod", false, true, true},
-		{"-status:degraded", false, true, true},
-		{"-ns:prod", false, false, true},
+		{"!web", false, false, true},
+		{"!kind:pod", false, true, true},
+		{"!status:degraded", false, true, true},
+		{"!ns:prod", false, false, true},
 		// Negated and positive terms combine like any two terms — ANDed.
-		{"kind:pod -status:healthy", true, false, false},
+		{"kind:pod !status:healthy", true, false, false},
 	}
 	for _, tt := range tests {
 		f := parseResourceFilter(tt.query)
@@ -155,16 +155,16 @@ func TestFilterNegation(t *testing.T) {
 	}
 }
 
-// A bare "-" with nothing after it is not a negation marker — it is a name
-// search for a literal hyphen, which some resource names actually contain.
-func TestFilterBareHyphenIsNotNegation(t *testing.T) {
-	n := fnode("Pod", "web-abc12", "prod", "Healthy")
-	if !parseResourceFilter("-").match(n) {
-		t.Error("a bare '-' should search the name for a literal hyphen, not negate everything")
+// A bare "!" with nothing after it is not a negation marker — it is a name
+// search for a literal exclamation mark, in case one ever shows up in a name.
+func TestFilterBareBangIsNotNegation(t *testing.T) {
+	n := fnode("Pod", "web-abc12!", "prod", "Healthy")
+	if !parseResourceFilter("!").match(n) {
+		t.Error("a bare '!' should search the name for a literal '!', not negate everything")
 	}
 }
 
-// The application filter's `-` prefix negates any field the same way the
+// The application filter's `!` prefix negates any field the same way the
 // resource filter's does, name included.
 func TestAppFilterNegation(t *testing.T) {
 	var web, api argocd.Application
@@ -180,11 +180,11 @@ func TestAppFilterNegation(t *testing.T) {
 		web   bool
 		api   bool
 	}{
-		{"-web", false, true},
-		{"-ctx:sb", false, true},
-		{"-sync:synced", false, true},
+		{"!web", false, true},
+		{"!ctx:sb", false, true},
+		{"!sync:synced", false, true},
 		// Negated and positive terms combine like any two terms — ANDed.
-		{"ctx:prod -sync:outofsync", true, false},
+		{"ctx:prod !sync:outofsync", true, false},
 	}
 	for _, tt := range tests {
 		f := parseAppFilter(tt.query)

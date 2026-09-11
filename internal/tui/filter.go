@@ -23,8 +23,8 @@ import (
 //	label:app=web  a label key and value
 //	l:app          a label key, any value
 //	kind:pod web   both — terms are ANDed
-//	-kind:pod      not a pod — a `-` prefix negates any field, name included
-//	-web           name does not contain "web"
+//	!kind:pod      not a pod — a `!` prefix negates any field, name included
+//	!web           name does not contain "web"
 //
 // Labels are only available for the kinds Argo CD reports networking for —
 // Pods, Services, Ingresses. A label term therefore excludes every other kind
@@ -48,7 +48,7 @@ type resourceFilter struct {
 
 // strTerm is one field requirement: a value to compare against, and whether
 // the comparison is negated. Every non-label field in both the resource and
-// application filters shares this shape, so a `-` prefix means the same thing
+// application filters shares this shape, so a `!` prefix means the same thing
 // wherever it appears.
 type strTerm struct {
 	value  string
@@ -69,11 +69,11 @@ func (t strTerm) prefixMatch(haystack string) bool {
 	return strings.HasPrefix(haystack, t.value) != t.negate
 }
 
-// splitNegate strips a leading `-` and reports whether it was there. The `-`
-// only counts as negation when something follows it — a bare "-" is a name
-// search for a literal hyphen, which is rare but not nothing.
+// splitNegate strips a leading `!` and reports whether it was there. The `!`
+// only counts as negation when something follows it — a bare "!" is a name
+// search for a literal exclamation mark, which is rare but not nothing.
 func splitNegate(s string) (string, bool) {
-	if strings.HasPrefix(s, "-") && len(s) > 1 {
+	if strings.HasPrefix(s, "!") && len(s) > 1 {
 		return s[1:], true
 	}
 	return s, false
@@ -173,4 +173,4 @@ func (f resourceFilter) match(n argocd.Node) bool {
 
 // resourceFilterHint is shown under the filter prompt so the field prefixes are
 // discoverable without opening help.
-const resourceFilterHint = "name · kind:pod · status:degraded · ns:prod · label:app=web · -kind:pod"
+const resourceFilterHint = "name · kind:pod · status:degraded · ns:prod · label:app=web · !kind:pod"

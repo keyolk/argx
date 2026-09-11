@@ -138,7 +138,7 @@ func TestFilterByGenerator(t *testing.T) {
 		{"gen:clusters", 2}, // likewise
 		{"gen:merge", 1},
 		{"generator:git", 2},
-		{"-gen:git", 1},
+		{"!gen:git", 1},
 	} {
 		m.appsetFilter = tt.q
 		m.applySetFilter()

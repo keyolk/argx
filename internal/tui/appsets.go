@@ -74,11 +74,8 @@ func matchSet(s *argocd.ApplicationSet, q string) bool {
 		s.Spec.Template.Spec.Destination.Namespace,
 	}, " "))
 
-	for _, term := range strings.Fields(strings.ToLower(q)) {
-		negate := false
-		if strings.HasPrefix(term, "-") && len(term) > 1 {
-			negate, term = true, term[1:]
-		}
+	for _, raw := range strings.Fields(strings.ToLower(q)) {
+		term, negate := splitNegate(raw)
 		ok := setMatchTerm(s, gens, hay, term)
 		if ok == negate {
 			return false
