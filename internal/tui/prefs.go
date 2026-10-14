@@ -147,10 +147,17 @@ func (m *Model) persistUI() tea.Cmd {
 }
 
 // quitCmd writes the latest state and then quits (see the prefs.Saved arm).
+//
+// savedUI is brought up to date too, or the persistUI that Update runs after
+// every handler would see the state as unsaved and queue a debounced write
+// behind the final one.
 func (m *Model) quitCmd() tea.Cmd {
-	m.persistUI()
+	st := m.uiState()
+	if data, err := json.Marshal(st); err == nil {
+		m.savedUI = data
+	}
 	var cmd tea.Cmd
-	m.saver, cmd = m.saver.Flush()
+	m.saver, cmd = m.saver.FlushWith(st)
 	return cmd
 }
 
