@@ -6,33 +6,29 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/keyolk/tuikit/keys"
+	"github.com/keyolk/tuikit/toast"
 )
 
 // Update dispatches by message type. No I/O happens here — every side effect
 // returns a tea.Cmd.
 //
-// It also arms the expiry of any toast the message set. Doing that here rather
-// than in setToast keeps the dozens of call sites unchanged, and expiring on a
-// timer (rather than View comparing against time.Since) is what makes the toast
-// actually disappear while argx is idle and nothing else triggers a frame.
+// It also returns the expiry ticks of any toasts the message queued. Doing that
+// here rather than at each setToast keeps the dozens of call sites unchanged,
+// and expiring on a timer (rather than View comparing against time.Since) is
+// what makes a toast disappear while argx is idle.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	before := m.toast.seq
 	model, cmd := m.update(msg)
-	if m.toast.seq != before && m.toast.text != "" {
-		seq := m.toast.seq
-		cmd = tea.Batch(cmd, tea.Tick(toastTTL, func(time.Time) tea.Msg {
-			return toastExpireMsg{seq: seq}
-		}))
+	if len(m.toastCmds) > 0 {
+		cmd = tea.Batch(append([]tea.Cmd{cmd}, m.toastCmds...)...)
+		m.toastCmds = nil
 	}
 	return model, cmd
 }
 
 func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case toastExpireMsg:
-		if msg.seq == m.toast.seq {
-			m.toast.text = ""
-		}
+	case toast.Expired:
+		m.toasts = toast.Update(m.toasts, msg)
 		return m, nil
 
 	case tea.WindowSizeMsg:
@@ -270,6 +266,10 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// A key the reader pressed after an error was on screen is the reader
+	// having seen it. Cleared before the handler runs, so the handler's own
+	// toast survives.
+	m.toasts = toast.OnKey(m.toasts)
 	// Under a Korean input source the shortcut keys arrive as jamo (`q` -> `ㅂ`)
 	// and do nothing until the input source is switched back. Rewrite them to
 	// the Latin key at the same physical position -- but not while the filter

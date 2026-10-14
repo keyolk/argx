@@ -270,8 +270,8 @@ func TestPruneIsUnavailableWhileAutoSyncIsOff(t *testing.T) {
 	if m.overlay != overlayNone || cmd != nil {
 		t.Error("prune must do nothing while auto-sync is off")
 	}
-	if !strings.Contains(m.toast.text, "auto-sync is off") {
-		t.Errorf("the reason should be shown, toast = %q", m.toast.text)
+	if !strings.Contains(m.toastText(), "auto-sync is off") {
+		t.Errorf("the reason should be shown, toast = %q", m.toastText())
 	}
 }
 

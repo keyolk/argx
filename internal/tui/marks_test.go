@@ -38,8 +38,8 @@ func TestMarkAllOnlyMarks(t *testing.T) {
 	if len(m.appMarks) != 3 {
 		t.Errorf("a again should change nothing, got %d", len(m.appMarks))
 	}
-	if !strings.Contains(m.toast.text, "already marked") {
-		t.Errorf("toast = %q, want it to say nothing changed", m.toast.text)
+	if !strings.Contains(m.toastText(), "already marked") {
+		t.Errorf("toast = %q, want it to say nothing changed", m.toastText())
 	}
 }
 
@@ -59,8 +59,8 @@ func TestClearReportsWhatTheFilterHides(t *testing.T) {
 	if !m.appMarks["test/web-dev"] {
 		t.Error("the mark outside the filter should be the one that survived")
 	}
-	if !strings.Contains(m.toast.text, "outside the filter") {
-		t.Errorf("toast = %q, want the surviving marks called out", m.toast.text)
+	if !strings.Contains(m.toastText(), "outside the filter") {
+		t.Errorf("toast = %q, want the surviving marks called out", m.toastText())
 	}
 
 	// A second A, with nothing visible left, takes the rest — so the escape
@@ -80,8 +80,8 @@ func TestClearIsQuietWithNothingHidden(t *testing.T) {
 	if len(m.appMarks) != 0 {
 		t.Fatalf("marks = %d, want none", len(m.appMarks))
 	}
-	if strings.Contains(m.toast.text, "outside") {
-		t.Errorf("toast = %q, want no warning when nothing is hidden", m.toast.text)
+	if strings.Contains(m.toastText(), "outside") {
+		t.Errorf("toast = %q, want no warning when nothing is hidden", m.toastText())
 	}
 }
 
@@ -275,8 +275,8 @@ func TestMarkedOnlyRefusesAnEmptySelection(t *testing.T) {
 	if m.markedOnly {
 		t.Error("there is nothing to narrow to")
 	}
-	if !strings.Contains(m.toast.text, "nothing is marked") {
-		t.Errorf("toast = %q, want it to say why", m.toast.text)
+	if !strings.Contains(m.toastText(), "nothing is marked") {
+		t.Errorf("toast = %q, want it to say why", m.toastText())
 	}
 }
 
@@ -298,8 +298,8 @@ func TestMarkKeysWorkOnTheTree(t *testing.T) {
 		t.Errorf("inverting a full selection empties it, got %d", len(m.treeMarks))
 	}
 	press(t, m, "A")
-	if !strings.Contains(m.toast.text, "nothing was marked") {
-		t.Errorf("toast = %q, want it to say there was nothing to clear", m.toast.text)
+	if !strings.Contains(m.toastText(), "nothing was marked") {
+		t.Errorf("toast = %q, want it to say there was nothing to clear", m.toastText())
 	}
 }
 
@@ -365,8 +365,8 @@ func TestClearingEverythingLeavesMarkedOnly(t *testing.T) {
 	if len(m.appRows) != 3 {
 		t.Errorf("rows = %d, want the whole list back", len(m.appRows))
 	}
-	if !strings.Contains(m.toast.text, "showing everything") {
-		t.Errorf("toast = %q, want it to explain the list came back", m.toast.text)
+	if !strings.Contains(m.toastText(), "showing everything") {
+		t.Errorf("toast = %q, want it to explain the list came back", m.toastText())
 	}
 }
 

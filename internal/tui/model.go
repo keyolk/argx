@@ -31,6 +31,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/keyolk/tuikit/keys"
+	"github.com/keyolk/tuikit/toast"
 
 	"github.com/keyolk/argx/internal/argocd"
 	"github.com/keyolk/argx/internal/config"
@@ -305,7 +306,9 @@ type Model struct {
 	appsInFlight bool
 
 	// ---- transient feedback ----
-	toast       toastState
+	toasts toast.Queue
+	// toastCmds are the expiry ticks of toasts queued during this Update.
+	toastCmds   []tea.Cmd
 	errMsg      string
 	confirm     confirmState
 	syncOpts    syncOptState
@@ -574,37 +577,43 @@ func (m *Model) pop() {
 	m.prev = m.prev[:len(m.prev)-1]
 }
 
-// toastLevel is how a toast is colored. A failure must not read as success.
-type toastLevel int
-
-const (
-	toastInfo toastLevel = iota
-	toastWarn
-	toastErr
-)
-
-// toastTTL is how long a toast stays in the status line.
+// toastTTL is how long a non-error toast stays in the status line. Errors stay
+// until a key is pressed after they were on screen (toast.OnKey): a failure
+// that times out while the reader looked away is a failure they never saw.
 const toastTTL = 5 * time.Second
 
-// toastState is the one transient status-line message.
-//
-// seq identifies the toast so its expiry timer clears only that toast: a newer
-// toast set before the older one's timer fires must survive it.
-type toastState struct {
-	text  string
-	level toastLevel
-	seq   uint64
-}
-
-// toastExpireMsg clears the toast stamped seq, if it is still the one shown.
-type toastExpireMsg struct{ seq uint64 }
+// Toast sources. The queue keeps the newest toast per source, so a later
+// "synced" does not wipe a sync failure the reader has not seen yet.
+const (
+	toastSrcStatus = "status"
+	toastSrcError  = "error"
+)
 
 // setToast shows a transient informational message in the status line.
-func (m *Model) setToast(s string) { m.setToastLevel(toastInfo, s) }
+func (m *Model) setToast(s string) { m.setToastLevel(toast.Info, s) }
 
-// setToastErr shows a transient failure, in the error color.
-func (m *Model) setToastErr(s string) { m.setToastLevel(toastErr, s) }
+// setToastErr shows a failure, in the error color, until the next key.
+func (m *Model) setToastErr(s string) { m.setToastLevel(toast.Error, s) }
 
-func (m *Model) setToastLevel(level toastLevel, s string) {
-	m.toast = toastState{text: s, level: level, seq: m.toast.seq + 1}
+// setToastLevel queues a toast. Its expiry tick is collected and returned by
+// Update, which keeps the many call sites from having to thread a tea.Cmd.
+func (m *Model) setToastLevel(level toast.Level, s string) {
+	src := toastSrcStatus
+	if level == toast.Error {
+		src = toastSrcError
+	}
+	var cmd tea.Cmd
+	m.toasts, cmd = toast.Push(m.toasts, toast.Toast{Source: src, Text: s, Level: level, TTL: toastTTL})
+	if cmd != nil {
+		m.toastCmds = append(m.toastCmds, cmd)
+	}
+}
+
+// toastText is the newest toast's text, or "" (for tests and the status line).
+func (m *Model) toastText() string {
+	items := m.toasts.Items()
+	if len(items) == 0 {
+		return ""
+	}
+	return items[len(items)-1].Text
 }

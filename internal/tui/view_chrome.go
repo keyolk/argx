@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
+	"github.com/keyolk/tuikit/toast"
 )
 
 // renderStatus is the one-line state readout above the footer: counts, marks,
@@ -237,22 +238,34 @@ func (m *Model) renderStatus() string {
 	if m.loading {
 		parts = append(parts, m.st.warn.Render("… "+m.loadWhat))
 	}
-	// The toast is cleared by its own timer (see Update), so View only draws it.
-	if m.toast.text != "" {
-		style := m.st.success
-		switch m.toast.level {
-		case toastWarn:
-			style = m.st.warn
-		case toastErr:
-			style = m.st.err
-		}
-		parts = append(parts, style.Render(m.toast.text))
-	}
+	// Toasts are cleared by their own timers (see Update), so View only draws
+	// them: a sticky error first, then the newest status.
+	parts = append(parts, m.toastParts()...)
 
 	// Each part carries its own style already; the separator is styled on its
 	// own rather than wrapping the joined string, which would nest escape
 	// sequences and lose the inner colors after the first reset.
 	return truncate(strings.Join(parts, m.st.dim.Render(m.gl.sep)), m.width)
+}
+
+// toastParts renders the queued toasts for the status line, each with its
+// level's marker so severity survives NO_COLOR.
+func (m *Model) toastParts() []string {
+	st := toast.Styles{ASCII: m.gl.set == iconsASCII}
+	var parts []string
+	for _, t := range m.toasts.Items() {
+		style := m.st.success
+		switch t.Level {
+		case toast.Info:
+			style = m.st.info
+		case toast.Warn:
+			style = m.st.warn
+		case toast.Error:
+			style = m.st.err
+		}
+		parts = append(parts, style.Render(st.Prefix(t.Level)+" "+t.Text))
+	}
+	return parts
 }
 
 // markParts is the selection's readout: how many, how many the filter is
