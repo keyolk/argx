@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/keyolk/tuikit/render"
 )
 
 // View renders the whole frame. Pure: no I/O, no state mutation.
@@ -196,7 +197,7 @@ func (m *Model) renderHistory() string {
 
 	lines := make([]string, 0, h)
 	lines = append(lines, m.st.header.Render(truncate(
-		"   ID   "+padRight("DEPLOYED", 20)+" "+padRight("REVISION", 12)+" BY", m.width)))
+		"   ID   "+render.PadRight("DEPLOYED", 20)+" "+render.PadRight("REVISION", 12)+" BY", m.width)))
 
 	for r := m.histTop; r < len(rows) && len(lines) < h; r++ {
 		e := rows[r]
@@ -225,9 +226,9 @@ func (m *Model) renderHistory() string {
 		who := m.gl.prefix(m.gl.person) + e.Who()
 
 		line := cursor + "  " +
-			m.st.dim.Render(padRight(fmt.Sprint(e.ID), 4)) + " " +
-			style.Render(padRight(when, 20)) + " " +
-			m.st.info.Render(padRight(rev, 12)) + " " +
+			m.st.dim.Render(render.PadRight(fmt.Sprint(e.ID), 4)) + " " +
+			style.Render(render.PadRight(when, 20)) + " " +
+			m.st.info.Render(render.PadRight(rev, 12)) + " " +
 			m.st.dim.Render(who) + suffix
 		lines = append(lines, truncate(line, m.width))
 	}
@@ -292,7 +293,7 @@ func (m *Model) renderDetails() string {
 		}
 
 		line := cursor + edit + " " +
-			m.st.dim.Render(padRight(truncate(r.label, labelW), labelW)) + "  " +
+			m.st.dim.Render(render.PadRight(truncate(r.label, labelW), labelW)) + "  " +
 			valStyle.Render(r.value)
 		if r.note != "" {
 			line += m.st.dim.Render("  (" + r.note + ")")

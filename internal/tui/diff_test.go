@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/keyolk/argx/internal/argocd"
+	"github.com/keyolk/tuikit/render"
 )
 
 func TestRenderDiffReportsNoDifferences(t *testing.T) {
@@ -235,7 +236,7 @@ func TestShortRevAbbreviatesSHAsOnly(t *testing.T) {
 // every column after a CJK name.
 func TestTruncateAndPadUseCellWidth(t *testing.T) {
 	s := "한글이름" // 4 runes, 8 cells
-	if got := padRight(s, 10); lipglossWidth(got) != 10 {
+	if got := render.PadRight(s, 10); lipglossWidth(got) != 10 {
 		t.Errorf("padRight produced %d cells, want 10", lipglossWidth(got))
 	}
 	if got := truncate(s, 5); lipglossWidth(got) > 5 {

@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/keyolk/tuikit/render"
 )
 
 // The scheduled-sync list.
@@ -76,8 +77,8 @@ func (m *Model) renderSchedule() string {
 
 		// The whole point of the column is the countdown, and "08-31 03:36 (in
 		// 1…" answers neither question. 24 cells fit "08-31 03:36 (in 1h30m)".
-		line := cursor + " " + stateStyle.Render(padRight(s.state.String(), 10)) + " " +
-			m.st.dim.Render(padRight(truncate(when, whenCol), whenCol)) + " " +
+		line := cursor + " " + stateStyle.Render(render.PadRight(s.state.String(), 10)) + " " +
+			m.st.dim.Render(render.PadRight(truncate(when, whenCol), whenCol)) + " " +
 			nameStyle.Render(name)
 		lines = append(lines, truncate(line, m.width))
 

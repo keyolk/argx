@@ -197,7 +197,7 @@ func (m *Model) renderStatus() string {
 		// knowing. Not a footer hint: no key here does it, the sync options do.
 		parts = append(parts, m.st.dim.Render(fmt.Sprintf(
 			"to schedule a sync: %s, then %s in the sync options",
-			m.keyHint(aDetailsSync), m.keyHint(aOptWait))))
+			m.keyHint(stackDetails, aDetailsSync), m.keyHint(stackSyncOpts, aOptWait))))
 
 	default:
 		res := m.searchPager()
@@ -251,19 +251,13 @@ func (m *Model) renderStatus() string {
 // toastParts renders the queued toasts for the status line, each with its
 // level's marker so severity survives NO_COLOR.
 func (m *Model) toastParts() []string {
-	st := toast.Styles{ASCII: m.gl.set == iconsASCII}
+	st := toast.Styles{
+		Info: m.st.info, Success: m.st.success, Warn: m.st.warn, Error: m.st.err, Progress: m.st.info,
+		ASCII: m.gl.set == iconsASCII,
+	}
 	var parts []string
 	for _, t := range m.toasts.Items() {
-		style := m.st.success
-		switch t.Level {
-		case toast.Info:
-			style = m.st.info
-		case toast.Warn:
-			style = m.st.warn
-		case toast.Error:
-			style = m.st.err
-		}
-		parts = append(parts, style.Render(st.Prefix(t.Level)+" "+t.Text))
+		parts = append(parts, toast.RenderItem(t, m.width, st))
 	}
 	return parts
 }
@@ -441,11 +435,11 @@ func (m *Model) renderOverlay(frame string) string {
 			m.st.accent.Render("Sync options"),
 			m.st.dim.Render(scope),
 			"",
-			row(0, check(m.syncOpts.prune)+" "+m.st.info.Render(m.keyHint(aOptPrune))+" prune  "+
+			row(0, check(m.syncOpts.prune)+" "+m.st.info.Render(m.keyHint(stackSyncOpts, aOptPrune))+" prune  "+
 				m.st.dim.Render("(delete resources not in git)")),
-			row(1, check(m.syncOpts.dryRun)+" "+m.st.info.Render(m.keyHint(aOptDryRun))+" dry-run  "+
+			row(1, check(m.syncOpts.dryRun)+" "+m.st.info.Render(m.keyHint(stackSyncOpts, aOptDryRun))+" dry-run  "+
 				m.st.dim.Render("(compute only, apply nothing)")),
-			row(2, check(m.syncOpts.schedule)+" "+m.st.info.Render(m.keyHint(aOptWait))+" wait for the sync window  "+
+			row(2, check(m.syncOpts.schedule)+" "+m.st.info.Render(m.keyHint(stackSyncOpts, aOptWait))+" wait for the sync window  "+
 				m.st.dim.Render("(while argx runs)")),
 			"",
 			m.modalHint(stackSyncOpts, m.modalContentWidth(64)),
@@ -525,7 +519,7 @@ func (m *Model) renderRevPicker() string {
 				icon = m.gl.prefix(m.gl.branchRef)
 			}
 			lines = append(lines, cursor+" "+icon+
-				style.Render(padRight(truncate(it.name, nameW-lipgloss.Width(icon)), nameW-lipgloss.Width(icon)))+" "+
+				style.Render(render.PadRight(truncate(it.name, nameW-lipgloss.Width(icon)), nameW-lipgloss.Width(icon)))+" "+
 				m.st.dim.Render(it.kind))
 		}
 		if n := len(p.rows); n > h {

@@ -9,6 +9,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/keyolk/argx/internal/argocd"
+	"github.com/keyolk/tuikit/render"
 )
 
 // The sync-window view answers two questions that the rest of argx cannot:
@@ -120,7 +121,7 @@ func (m *Model) renderWindows() string {
 		if row.w.Blocks() {
 			kindStyle = m.st.err
 		}
-		kind := kindStyle.Render(padRight(row.w.Kind, 6))
+		kind := kindStyle.Render(render.PadRight(row.w.Kind, 6))
 
 		// Open right now is the fact the reader is here for.
 		state := "  "
@@ -134,9 +135,9 @@ func (m *Model) renderWindows() string {
 		}
 
 		line := cursor + state + kind + " " +
-			schedStyle.Render(padRight(row.w.Schedule, 17)) + " " +
-			m.st.dim.Render(padRight(row.w.Duration, 9)) + " " +
-			m.st.dim.Render(padRight(truncate(m.windowZoneCell(row), 15), 15)) + " " +
+			schedStyle.Render(render.PadRight(row.w.Schedule, 17)) + " " +
+			m.st.dim.Render(render.PadRight(row.w.Duration, 9)) + " " +
+			m.st.dim.Render(render.PadRight(truncate(m.windowZoneCell(row), 15), 15)) + " " +
 			m.st.dim.Render(m.windowScopeCell(row))
 		lines = append(lines, truncate(line, m.width))
 	}

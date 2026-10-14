@@ -10,6 +10,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/keyolk/tuikit/keys"
+	"github.com/keyolk/tuikit/render"
 )
 
 // renderTree is the resource tree of the focused application.
@@ -34,7 +35,7 @@ func (m *Model) renderTree() string {
 
 	lines := make([]string, 0, h)
 	lines = append(lines, m.st.header.Render(truncate(
-		"  H  "+padRight("KIND", kindW)+" NAME", m.width)))
+		"  H  "+render.PadRight("KIND", kindW)+" NAME", m.width)))
 
 	// Indentation is suppressed while a filter is active: the connectors would
 	// draw branches to parents the filter removed, which reads as a broken tree.
@@ -81,7 +82,7 @@ func (m *Model) renderTree() string {
 		}
 		kindCell := m.gl.prefix(m.gl.kindIcon(n.Kind)) + n.Kind
 		label := m.st.kindStyle(n.Kind).Render(
-			padRight(truncate(kindCell, kindW), kindW)) +
+			render.PadRight(truncate(kindCell, kindW), kindW)) +
 			" " + prefix + nameStyle.Render(n.Name)
 
 		// Trailing detail: the one fact that matters per kind, not every info
@@ -264,7 +265,7 @@ func (m *Model) helpLines() []string {
 	for _, s := range notes {
 		lines = append(lines, m.st.accent.Render(s.title))
 		for _, r := range s.rows {
-			lines = append(lines, truncate("  "+m.st.info.Render(padRight(r.k, 18))+m.st.dim.Render(r.d), m.width))
+			lines = append(lines, truncate("  "+m.st.info.Render(render.PadRight(r.k, 18))+m.st.dim.Render(r.d), m.width))
 		}
 		lines = append(lines, "")
 	}

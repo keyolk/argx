@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/keyolk/tuikit/render"
 )
 
 // Side-by-side diff.
@@ -131,10 +132,10 @@ func (m *Model) renderSideBySide(rows []sxsRow, top, h int) []string {
 		// A cell that is empty on one side is filled rather than left blank, so
 		// the reader can see at a glance that the line exists on only one side
 		// — an empty cell and a cell of spaces look identical otherwise.
-		left := padRight(truncate(r.left, col), col)
+		left := render.PadRight(truncate(r.left, col), col)
 		right := truncate(r.right, col)
 		if r.left == "" && (r.kind == '+' || r.kind == '~') {
-			left = m.st.dim.Render(padRight(strings.Repeat("·", min(col, 3)), col))
+			left = m.st.dim.Render(render.PadRight(strings.Repeat("·", min(col, 3)), col))
 			lStyle = lipgloss.NewStyle()
 		}
 		if r.right == "" && (r.kind == '-' || r.kind == '~') {

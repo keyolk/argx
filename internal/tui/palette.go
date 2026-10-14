@@ -12,6 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/keyolk/tuikit/keys"
+	"github.com/keyolk/tuikit/render"
 )
 
 // paletteState is the open palette.
@@ -120,7 +121,7 @@ func (m *Model) renderPalette() string {
 		if i == p.cur {
 			cursor, style = m.st.accent.Render(m.gl.cursor), m.st.selected
 		}
-		k := padRight(truncate(names.Join(e.Keys), keyW), keyW)
+		k := render.PadRight(truncate(names.Join(e.Keys), keyW), keyW)
 		lines = append(lines, truncate(cursor+" "+m.st.info.Render(k)+"  "+
 			style.Render(e.Help)+"  "+m.st.dim.Render(e.Group), w))
 	}

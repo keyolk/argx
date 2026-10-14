@@ -754,14 +754,13 @@ func (m *Model) keyNames() keys.Names {
 	return n
 }
 
-// keyHint is the first key bound to action in the current stack, for the few
-// places prose names a key ("hash pairing off (H)"). Derived, so a rebinding
-// in keys.yaml is what the prose says.
-func (m *Model) keyHint(action string) string {
-	for _, b := range m.keymap().Bindings() {
-		if b.Action == action && len(b.Keys) > 0 {
-			return m.keyNames().Name(b.Keys[0])
-		}
+// keyHint names the key that runs action in stack right now, for the few
+// places prose names a key ("then w in the sync options"). keys.yaml
+// overrides and inner-context shadows are already applied by KeyFor, so the
+// prose says what the key does.
+func (m *Model) keyHint(stack []keys.Ctx, action string) string {
+	if k, ok := m.keymap().KeyFor(stack, action, m.keyOpts()); ok {
+		return m.keyNames().Name(k)
 	}
 	return "?"
 }

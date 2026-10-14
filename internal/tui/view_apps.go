@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/keyolk/argx/internal/argocd"
+	"github.com/keyolk/tuikit/render"
 )
 
 func (m *Model) renderApps() string {
@@ -30,18 +31,18 @@ func (m *Model) renderApps() string {
 	// columns take their labels with them — a label left behind when its column
 	// is gone makes the header wider than the rows, and lipgloss then pads every
 	// line to that width.
-	head := padRight("  ST NAME", 3+3+c.name)
+	head := render.PadRight("  ST NAME", 3+3+c.name)
 	if c.ctx > 0 {
-		head += " " + padRight("CONTEXT", c.ctx)
+		head += " " + render.PadRight("CONTEXT", c.ctx)
 	}
 	if c.proj > 0 {
-		head += " " + padRight("PROJECT", c.proj)
+		head += " " + render.PadRight("PROJECT", c.proj)
 	}
 	if c.dst > 0 {
-		head += " " + padRight("DESTINATION", c.dst)
+		head += " " + render.PadRight("DESTINATION", c.dst)
 	}
 	if c.synced > 0 {
-		head += " " + padRight("SYNCED", c.synced)
+		head += " " + render.PadRight("SYNCED", c.synced)
 	}
 	head += " REVISION"
 	lines = append(lines, m.st.header.Render(truncate(head, m.width)))
@@ -77,7 +78,7 @@ func (m *Model) renderApps() string {
 		default:
 			nameStyle = lipgloss.NewStyle()
 		}
-		name := nameStyle.Render(padRight(truncate(a.Name(), c.name), c.name))
+		name := nameStyle.Render(render.PadRight(truncate(a.Name(), c.name), c.name))
 
 		rev := m.revisionCell(a)
 
@@ -93,14 +94,14 @@ func (m *Model) renderApps() string {
 			// reading the column.
 			ctxLabel := m.gl.prefix(m.gl.server) + a.Context
 			line += " " + m.ctxStyle(a.Context).Render(
-				padRight(truncate(ctxLabel, c.ctx), c.ctx))
+				render.PadRight(truncate(ctxLabel, c.ctx), c.ctx))
 		}
 		if c.proj > 0 {
 			proj := m.gl.prefix(m.gl.project) + a.Spec.Project
-			line += " " + m.st.dim.Render(padRight(truncate(proj, c.proj), c.proj))
+			line += " " + m.st.dim.Render(render.PadRight(truncate(proj, c.proj), c.proj))
 		}
 		if c.dst > 0 {
-			line += " " + m.st.dim.Render(padRight(truncate(dst, c.dst), c.dst))
+			line += " " + m.st.dim.Render(render.PadRight(truncate(dst, c.dst), c.dst))
 		}
 		if c.synced > 0 {
 			// Right-aligned, so the magnitudes line up: a column of ages is
@@ -308,17 +309,17 @@ func (m *Model) appColumns() (c appCols) {
 func (m *Model) syncedCell(a *argocd.Application, now time.Time, w int) string {
 	when, _, ok := a.LastSync()
 	if !ok {
-		return m.st.dim.Render(padLeft("—", w))
+		return m.st.dim.Render(render.PadLeft("—", w))
 	}
 
 	// A sync in flight has no age worth reporting — it is happening now — and
 	// saying "0s" invites the reader to refresh until it changes.
 	if op := a.Status.OperationState; op != nil && op.Running() {
-		return m.st.warn.Render(padLeft("syncing", w))
+		return m.st.warn.Render(render.PadLeft("syncing", w))
 	}
 
 	d := now.Sub(when)
-	text := padLeft(humanSince(d), w)
+	text := render.PadLeft(humanSince(d), w)
 	switch {
 	case d >= staleAge:
 		return m.st.warn.Render(text)

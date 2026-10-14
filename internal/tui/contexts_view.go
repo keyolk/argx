@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/keyolk/tuikit/render"
 )
 
 // The context list, and the detail panel behind `enter`.
@@ -62,8 +63,8 @@ func (m *Model) renderContexts() string {
 		}
 
 		line := cursor + " " +
-			nameStyle.Render(padRight(truncate(row.name, ctxNameCol), ctxNameCol)) + " " +
-			kindStyle.Render(padRight(row.authKind(), ctxKindCol)) + " " + id
+			nameStyle.Render(render.PadRight(truncate(row.name, ctxNameCol), ctxNameCol)) + " " +
+			kindStyle.Render(render.PadRight(row.authKind(), ctxKindCol)) + " " + id
 		lines = append(lines, truncate(line, m.width))
 
 		// The second line carries what needs saying about this credential, and
@@ -143,7 +144,7 @@ func (m *Model) contextDetailLines() []string {
 	now := time.Now()
 
 	label := func(k, v string) string {
-		return "  " + m.st.dim.Render(padRight(k, 18)) + v
+		return "  " + m.st.dim.Render(render.PadRight(k, 18)) + v
 	}
 
 	lines := []string{
