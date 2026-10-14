@@ -332,7 +332,8 @@ func TestHashToggleRerendersWithoutRefetching(t *testing.T) {
 		t.Fatal("setup: pairing should be on by default")
 	}
 
-	_, cmd := m.Update(key("H"))
+	// update, not Update: the toast-expiry timer is not a fetch.
+	_, cmd := m.update(key("H"))
 	if cmd != nil {
 		t.Error("toggling must not issue a command — the response is already in hand")
 	}

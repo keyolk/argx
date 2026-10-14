@@ -9,8 +9,31 @@ import (
 
 // Update dispatches by message type. No I/O happens here — every side effect
 // returns a tea.Cmd.
+//
+// It also arms the expiry of any toast the message set. Doing that here rather
+// than in setToast keeps the dozens of call sites unchanged, and expiring on a
+// timer (rather than View comparing against time.Since) is what makes the toast
+// actually disappear while argx is idle and nothing else triggers a frame.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	before := m.toast.seq
+	model, cmd := m.update(msg)
+	if m.toast.seq != before && m.toast.text != "" {
+		seq := m.toast.seq
+		cmd = tea.Batch(cmd, tea.Tick(toastTTL, func(time.Time) tea.Msg {
+			return toastExpireMsg{seq: seq}
+		}))
+	}
+	return model, cmd
+}
+
+func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case toastExpireMsg:
+		if msg.seq == m.toast.seq {
+			m.toast.text = ""
+		}
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.tooSmall = msg.Width < minWidth || msg.Height < minHeight
@@ -217,12 +240,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if err := m.applyScheduleResult(msg); err != nil {
 			// The row was cleared while its sync was in flight. The sync still
 			// happened, so saying nothing would be the wrong kind of quiet.
-			m.setToast("a cleared scheduled sync finished: " + msg.state.String())
+			text := "a cleared scheduled sync finished: " + msg.state.String()
+			if msg.state == scheduleFailed {
+				m.setToastErr(text)
+			} else {
+				m.setToast(text)
+			}
 			return m, nil
 		}
 		m.clampScheduleCursor()
 		if msg.state == scheduleFailed {
-			m.setToast("scheduled sync failed: " + msg.reason)
+			m.setToastErr("scheduled sync failed: " + msg.reason)
 		}
 		return m, nil
 

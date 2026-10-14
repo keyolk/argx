@@ -160,7 +160,7 @@ func (d *diffToolRunner) Run() error {
 func (m *Model) diffToolCmd() tea.Cmd {
 	argv := m.cfg.DiffToolCommand()
 	if len(argv) == 0 {
-		m.setToast("no diff tool configured — set diff_tool in " + config.FilePath())
+		m.setToastLevel(toastWarn, "no diff tool configured — set diff_tool in "+config.FilePath())
 		return nil
 	}
 	if m.pagerSides == nil {

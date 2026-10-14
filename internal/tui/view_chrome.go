@@ -230,10 +230,16 @@ func (m *Model) renderStatus() string {
 	if m.loading {
 		parts = append(parts, m.st.warn.Render("… "+m.loadWhat))
 	}
-	// The toast lives for a few seconds; it is checked here rather than cleared
-	// on a timer so no tick is needed just to expire it.
-	if m.toast != "" && time.Since(m.toastAt) < 5*time.Second {
-		parts = append(parts, m.st.success.Render(m.toast))
+	// The toast is cleared by its own timer (see Update), so View only draws it.
+	if m.toast.text != "" {
+		style := m.st.success
+		switch m.toast.level {
+		case toastWarn:
+			style = m.st.warn
+		case toastErr:
+			style = m.st.err
+		}
+		parts = append(parts, style.Render(m.toast.text))
 	}
 
 	// Each part carries its own style already; the separator is styled on its
