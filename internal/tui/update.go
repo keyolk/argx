@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/keyolk/tuikit/keys"
+	"github.com/keyolk/tuikit/prefs"
 	"github.com/keyolk/tuikit/toast"
 )
 
@@ -18,6 +19,11 @@ import (
 // what makes a toast disappear while argx is idle.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	model, cmd := m.update(msg)
+	// Persist after the handler, whatever it changed: one place, so no handler
+	// can forget. Debounced, so holding j does not write per keypress.
+	if save := m.persistUI(); save != nil {
+		cmd = tea.Batch(cmd, save)
+	}
 	if len(m.toastCmds) > 0 {
 		cmd = tea.Batch(append([]tea.Cmd{cmd}, m.toastCmds...)...)
 		m.toastCmds = nil
@@ -30,6 +36,10 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case toast.Expired:
 		m.toasts = toast.Update(m.toasts, msg)
 		return m, nil
+
+	case prefs.SaveTick, prefs.Saved:
+		cmd, _ := m.handlePrefsMsg(msg)
+		return m, cmd
 
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -258,7 +268,7 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// and a program you cannot interrupt is one people kill from another
 		// window.
 		if msg.Type == tea.KeyCtrlC {
-			return m, tea.Quit
+			return m, m.quitCmd()
 		}
 		return m.handleKey(msg)
 	}
@@ -298,9 +308,6 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	return m.runAction(action)
 }
-
-// quitCmd ends the program.
-func (m *Model) quitCmd() tea.Cmd { return tea.Quit }
 
 // runAction runs a screen-level action: from a key, or from the palette.
 func (m *Model) runAction(action string) (tea.Model, tea.Cmd) {
@@ -513,6 +520,7 @@ func (m *Model) selectTab(t tab) tea.Cmd {
 		return nil
 	}
 	m.tab = t
+	m.lastTab = t
 	// A filter typed on one tab does not carry to another: the queries mean
 	// different things, and a stale filter that hides every row reads as an
 	// empty tab.

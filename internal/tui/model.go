@@ -23,6 +23,8 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"net/url"
 	"time"
@@ -31,6 +33,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/keyolk/tuikit/keys"
+	"github.com/keyolk/tuikit/prefs"
 	"github.com/keyolk/tuikit/toast"
 
 	"github.com/keyolk/argx/internal/argocd"
@@ -315,9 +318,19 @@ type Model struct {
 	autoRefresh bool
 	// tickGen identifies the live auto-refresh chain; see tickMsg.
 	tickGen uint64
+	// lastTab is the tab the application view opens on: the one last used,
+	// kept across restarts.
+	lastTab tab
+	// saver writes uiState to $XDG_STATE_HOME/argx/ui.json; savedUI is the
+	// last state handed to it, so an unchanged Update writes nothing.
+	saver   prefs.Saver[uiState]
+	savedUI []byte
+
 	// startErr is a problem found while building the model (a bad keys.yaml),
 	// reported as a toast by Init rather than refusing to start.
 	startErr error
+	// restored is how many pending schedules came back from ui.json.
+	restored int
 }
 
 // confirmState describes a pending yes/no prompt.
@@ -407,12 +420,34 @@ func New(ctx context.Context, fleet *argocd.Fleet, cfg *config.Config) *Model {
 	if kmErr != nil {
 		m.startErr = kmErr
 	}
+	m.saver = prefs.NewSaver[uiState](prefsApp, 0)
+	ui, err := prefs.Load(prefsApp, uiState{})
+	if err != nil {
+		// A corrupt ui.json costs the remembered state, not the session.
+		m.startErr = errors.Join(m.startErr, err)
+	}
+	m.restored = m.restoreUI(ui)
+	// What was loaded is what is on disk; writing it straight back is noise.
+	m.savedUI, _ = json.Marshal(m.uiState())
 	return m
 }
 
 // Init loads the application list.
 func (m *Model) Init() tea.Cmd {
 	cmds := []tea.Cmd{m.loadAppsCmd(), tea.WindowSize()}
+	if m.autoRefresh {
+		m.tickGen++
+		cmds = append(cmds, tickCmd(m.tickGen))
+	}
+	if m.restored > 0 {
+		// The ticker runs only while something is pending; restored work is
+		// pending work. The toast says it came back, so nothing fires unnoticed.
+		cmds = append(cmds, scheduleTickCmd())
+		n := m.restored
+		cmds = append(cmds, func() tea.Msg {
+			return toastMsg{text: fmt.Sprintf("restored %d scheduled sync(s) — W to review", n)}
+		})
+	}
 	if err := m.startErr; err != nil {
 		cmds = append(cmds, func() tea.Msg {
 			return errMsg{err: fmt.Errorf("%w\n\nUsing the default keys.", err)}

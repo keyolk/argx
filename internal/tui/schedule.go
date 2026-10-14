@@ -22,10 +22,10 @@ import (
 // So argx waits. A scheduled sync sits until the window opens, re-checks that
 // the sync is still the one that was asked for, and issues it.
 //
-// It lives only as long as the TUI does. There is no daemon, no state file, and
-// nothing that outlives the process — a sync that fires while nobody is
-// watching is not something to build by accident. Quitting says plainly what
-// will be dropped.
+// It runs only while the TUI does. There is no daemon — a sync that fires while
+// nobody is watching is not something to build by accident. The schedules are
+// saved to ui.json (prefs.go) and come back on the next start, with a toast;
+// quitting with some pending says plainly that they pause.
 
 // scheduleState is where a scheduled sync is in its life.
 type scheduleState int

@@ -190,16 +190,18 @@ func (m *Model) clampScheduleCursor() {
 	}
 }
 
-// armQuitConfirm asks before dropping pending scheduled syncs.
+// armQuitConfirm asks before pausing pending scheduled syncs.
 //
 // Nothing else in argx blocks quitting, and this only does because the
-// schedules live in this process: there is no daemon to pick them up, so
-// quitting is what cancels them.
+// schedules run in this process: they are saved and come back on the next
+// start, but nothing fires while argx is closed — and a window that opens and
+// closes in between is missed.
 func (m *Model) armQuitConfirm(n int) {
 	now := time.Now()
 	body := []string{
 		fmt.Sprintf("%d scheduled sync(s) have not run yet.", n),
-		m.st.dim.Render("They exist only in this session and will not run after argx exits."),
+		m.st.dim.Render("They are kept, but nothing runs until argx starts again — a window that"),
+		m.st.dim.Render("opens and closes in the meantime is missed."),
 		"",
 	}
 	shown := 0
@@ -215,9 +217,9 @@ func (m *Model) armQuitConfirm(n int) {
 		shown++
 	}
 	m.confirm = confirmState{
-		title:  "Quit and drop them?",
+		title:  "Quit and pause them?",
 		body:   body,
-		action: func() tea.Cmd { return tea.Quit },
+		action: func() tea.Cmd { return m.quitCmd() },
 	}
 	m.overlay = overlayConfirm
 }

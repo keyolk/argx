@@ -214,7 +214,8 @@ func TestQuitAsksWhenSchedulesArePending(t *testing.T) {
 	m := newTestModel(t, "web")
 	m.schedules = []scheduled{sched(1, "web", time.Hour)}
 
-	_, cmd := m.Update(key("q"))
+	// update, not Update: Update also saves the schedules set above.
+	_, cmd := m.update(key("q"))
 
 	if cmd != nil {
 		t.Error("q should open a prompt, not quit outright, while syncs are waiting")

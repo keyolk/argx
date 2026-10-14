@@ -44,7 +44,13 @@ func (m *Model) handleAppsKey(action string) (tea.Model, tea.Cmd) {
 			// line can say whether a sync is blocked without the reader going
 			// looking. It is one small request, and finding out by pressing `s`
 			// and being rejected is worse.
-			return m, tea.Batch(m.loadTreeCmd(*a), m.loadWindowsCmd(*a))
+			cmd := tea.Batch(m.loadTreeCmd(*a), m.loadWindowsCmd(*a))
+			// Open on the tab last used; the tree loads either way, since the
+			// status line and the resource count need it.
+			if m.lastTab != tabResources {
+				m.selectTab(m.lastTab)
+			}
+			return m, cmd
 		}
 	case aAppsDiff:
 		if a := m.currentApp(); a != nil {

@@ -17,11 +17,18 @@ import (
 // hit the network).
 func newTestModel(t *testing.T, names ...string) *Model {
 	t.Helper()
-	// Isolate from the developer's own argocd session and $BROWSER.
-	t.Setenv("HOME", t.TempDir())
 	// keys.yaml and ui.json must come from the test, never the developer.
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	return newTestModelSameState(t, names...)
+}
+
+// newTestModelSameState is newTestModel without resetting the state directory,
+// for tests that restart argx over what the previous model saved.
+func newTestModelSameState(t *testing.T, names ...string) *Model {
+	t.Helper()
+	// Isolate from the developer's own argocd session and $BROWSER.
+	t.Setenv("HOME", t.TempDir())
 
 	fleet := argocd.NewFleet([]config.Context{{Name: "test", Server: "argocd.test"}})
 	m := New(context.Background(), fleet, &config.Config{})

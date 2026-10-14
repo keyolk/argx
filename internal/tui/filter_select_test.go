@@ -225,7 +225,7 @@ func TestInterruptStillQuitsFromAFilteredList(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("ctrl+c produced no command")
 	}
-	if _, ok := cmd().(tea.QuitMsg); !ok {
+	if !quits(t, m, cmd) {
 		t.Error("ctrl+c should quit even mid-filter")
 	}
 }
@@ -263,7 +263,7 @@ func TestQuitIsUnaffectedByAStandingFilter(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("q produced no command")
 	}
-	if _, ok := cmd().(tea.QuitMsg); !ok {
+	if !quits(t, m, cmd) {
 		t.Error("q should still quit from a filtered list")
 	}
 }

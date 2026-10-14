@@ -1,10 +1,6 @@
 package tui
 
-import (
-	"testing"
-
-	tea "github.com/charmbracelet/bubbletea"
-)
+import "testing"
 
 // The jamo mapping itself is tuikit's (keys.NormalizeCJK) and tested there;
 // these go through argx's dispatcher.
@@ -36,7 +32,7 @@ func TestHangulQuitsLikeLatinQ(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("ㅂ (physical q) produced no command; expected quit")
 	}
-	if _, ok := cmd().(tea.QuitMsg); !ok {
+	if !quits(t, m, cmd) {
 		t.Fatal("ㅂ (physical q) did not quit")
 	}
 }

@@ -485,11 +485,11 @@ func (m *Model) armSyncConfirm() tea.Cmd {
 	if m.syncOpts.schedule {
 		// A scheduled sync is confirmed like any other, because it still syncs
 		// a cluster — just later. What differs is that the reader is told the
-		// waiting is bounded by the process: argx holds these in memory and
-		// nothing fires once it exits.
+		// waiting is bounded by the process: the schedules are saved, but
+		// nothing fires while argx is closed.
 		body = append(body, "",
 			m.st.warn.Render("Each sync waits for its window to open."),
-			m.st.dim.Render("Only while argx is running — quitting drops them."))
+			m.st.dim.Render("Only while argx is running — they are kept across restarts."))
 		m.confirm = confirmState{
 			title:  "Schedule sync?",
 			body:   body,
