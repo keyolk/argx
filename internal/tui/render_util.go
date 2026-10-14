@@ -6,10 +6,10 @@ package tui
 
 import (
 	"fmt"
+	"github.com/keyolk/tuikit/render"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/ansi"
 )
 
 // emptyBody is the placeholder shown when a view has nothing to list.
@@ -47,16 +47,8 @@ func padBody(lines []string, h int) string {
 // shorter than asked for), it can cut a sequence in half (sending a broken
 // control code to the terminal), and it drops the trailing reset (bleeding the
 // color into every row below). ansi.Truncate is aware of all three, and of
-// wide characters and graphemes besides.
-func truncate(s string, w int) string {
-	if w <= 0 {
-		return ""
-	}
-	if lipgloss.Width(s) <= w {
-		return s
-	}
-	return ansi.Truncate(s, w, "…")
-}
+// wide characters and graphemes besides. render.Truncate is that, shared.
+func truncate(s string, w int) string { return render.Truncate(s, w) }
 
 // padRight pads to w display cells.
 func padRight(s string, w int) string {

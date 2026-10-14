@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/ansi"
+	"github.com/keyolk/tuikit/render"
 	"github.com/keyolk/tuikit/toast"
 )
 
@@ -469,56 +469,11 @@ func (m *Model) renderOverlay(frame string) string {
 //
 // The frame is kept rather than replaced with blank space so the reader still
 // sees what the modal is about — which list, which rows are marked. It is
-// stripped and dimmed first: the box then stands out, and cutting plain text by
-// display cells is safe where cutting styled text would split an escape
-// sequence.
+// stripped and dimmed first so the box stands out; render.Center keeps the
+// result exactly the terminal's size and replaces a wide character straddling
+// either seam with a space instead of shifting the line.
 func (m *Model) spliceOverlay(frame, box string) string {
-	bg := strings.Split(ansi.Strip(frame), "\n")
-	for len(bg) < m.height {
-		bg = append(bg, "")
-	}
-	if len(bg) > m.height {
-		bg = bg[:m.height]
-	}
-
-	boxLines := strings.Split(box, "\n")
-	boxW := lipgloss.Width(box)
-	top := (m.height - len(boxLines)) / 2
-	if top < 0 {
-		top = 0
-	}
-	left := (m.width - boxW) / 2
-	if left < 0 {
-		left = 0
-	}
-
-	out := make([]string, len(bg))
-	for r, line := range bg {
-		b := r - top
-		if b < 0 || b >= len(boxLines) {
-			out[r] = m.dimLine(line)
-			continue
-		}
-		// splitCells never cuts a wide character in half, so the head can come
-		// out a cell short and rest then starts that cell earlier. The skip is
-		// measured from where rest actually starts, or the tail would begin
-		// inside the box and push the line past the terminal width.
-		head, rest := splitCells(line, left)
-		_, tail := splitCells(rest, left+boxW-lipgloss.Width(head))
-		// A wide character straddling the box's right edge is dropped whole,
-		// leaving the line a cell short — harmless at the end of a line.
-		out[r] = m.dimLine(padRight(head, left)) + padRight(boxLines[b], boxW) + m.dimLine(tail)
-	}
-	return strings.Join(out, "\n")
-}
-
-// dimLine renders background text in the dim style; empty stays empty so no
-// stray escape sequences pad the frame.
-func (m *Model) dimLine(s string) string {
-	if s == "" {
-		return ""
-	}
-	return m.st.dim.Render(s)
+	return render.Center(render.Dim(frame), box, m.width, m.height)
 }
 
 // renderRevPicker draws the branch/tag chooser.
