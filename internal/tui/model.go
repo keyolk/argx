@@ -288,6 +288,11 @@ type Model struct {
 	reqID    uint64 // pager views: diff, manifest, logs, events
 	treeID   uint64
 	windowID uint64
+	appsID   uint64
+	// appsInFlight is true from issuing an application list request until its
+	// (current) response lands. The auto-refresh tick checks it so a slow fleet
+	// — the request timeout is longer than the tick — does not stack loads.
+	appsInFlight bool
 
 	// ---- transient feedback ----
 	toast       string

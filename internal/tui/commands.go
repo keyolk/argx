@@ -19,6 +19,10 @@ import (
 // Update and View never touch I/O.
 
 type appsMsg struct {
+	// id is the request stamp (Model.appsID). A tick, ctrl+r and the reload
+	// after a sync can all be in flight at once; only the newest may land, or
+	// a slow older answer would overwrite a fresher list.
+	id   uint64
 	apps []argocd.Application
 	// errs are per-server failures. A fleet list does not fail as a whole when
 	// one server is down: the others still have answers, and hiding them
@@ -66,6 +70,9 @@ type errMsg struct{ err error }
 type tickMsg time.Time
 
 func (m *Model) loadAppsCmd() tea.Cmd {
+	m.appsID++
+	id := m.appsID
+	m.appsInFlight = true
 	m.loading, m.loadWhat = true, "applications"
 	fleet := m.fleet
 	ctx := m.ctx
@@ -75,7 +82,7 @@ func (m *Model) loadAppsCmd() tea.Cmd {
 		// The fleet queries every server concurrently and returns whatever
 		// answered, already sorted and stamped with its origin.
 		apps, errs := fleet.ListApplications(c, nil)
-		return appsMsg{apps: apps, errs: errs}
+		return appsMsg{id: id, apps: apps, errs: errs}
 	}
 }
 

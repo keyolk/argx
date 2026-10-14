@@ -18,6 +18,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case appsMsg:
+		if msg.id != m.appsID {
+			// Superseded by a newer request. Dropping it also keeps the
+			// loading indicator up until the request that matters answers.
+			return m, nil
+		}
+		m.appsInFlight = false
 		m.loading = false
 		if msg.err != nil {
 			m.showError(msg.err)
@@ -179,6 +185,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tickMsg:
 		if !m.autoRefresh {
 			return m, nil // no redraw, no work: argx idles at 0 fps
+		}
+		if m.appsInFlight {
+			// The previous load has not answered yet; keep the cadence but do
+			// not pile a second request onto a slow fleet.
+			return m, tickCmd()
 		}
 		return m, tea.Batch(m.loadAppsCmd(), tickCmd())
 

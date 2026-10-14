@@ -62,3 +62,47 @@ func TestTreeReloadKeepsCursorOnSameResource(t *testing.T) {
 		t.Errorf("cursor moved to %v after reload, want c", n)
 	}
 }
+
+// A slow older list must not overwrite a newer one that already landed.
+func TestSupersededAppListIsDropped(t *testing.T) {
+	m := newTestModel(t, "alpha")
+	m.loadAppsCmd()
+	old := m.appsID
+	m.loadAppsCmd()
+
+	m.Update(appsMsg{id: m.appsID, apps: []argocd.Application{testApp("new")}})
+	m.Update(appsMsg{id: old, apps: []argocd.Application{testApp("old")}})
+
+	if got := names(m.apps); len(got) != 1 || got[0] != "new" {
+		t.Errorf("apps = %v, want the newest response only", got)
+	}
+}
+
+// The first of two overlapping responses must not clear the loading indicator
+// while the request that matters is still out.
+func TestStaleAppListKeepsLoadingIndicator(t *testing.T) {
+	m := newTestModel(t, "alpha")
+	m.loadAppsCmd()
+	old := m.appsID
+	m.loadAppsCmd()
+
+	m.Update(appsMsg{id: old})
+	if !m.loading || !m.appsInFlight {
+		t.Error("a superseded response hid the request still in flight")
+	}
+}
+
+// A tick while a load is still out reschedules itself but issues no new load.
+func TestTickDoesNotStackLoads(t *testing.T) {
+	m := newTestModel(t, "alpha")
+	m.autoRefresh = true
+	m.loadAppsCmd()
+	id := m.appsID
+
+	if _, cmd := m.Update(tickMsg{}); cmd == nil {
+		t.Fatal("the tick chain must continue")
+	}
+	if m.appsID != id {
+		t.Error("a tick started a second load while one was in flight")
+	}
+}
