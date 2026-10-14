@@ -1,6 +1,8 @@
 package tui
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -195,5 +197,41 @@ func TestSanitizedNamesStayInTheDirectory(t *testing.T) {
 		if strings.Trim(got, ".") == "" {
 			t.Errorf("sanitizeFileName(%q) = %q, which names a directory", name, got)
 		}
+	}
+}
+
+// Building the command writes nothing: the temp files are created in Run,
+// outside Update, and are gone once the tool exits.
+func TestDiffToolWritesFilesOnlyWhenRun(t *testing.T) {
+	tmp := t.TempDir()
+	t.Setenv("TMPDIR", tmp)
+	m := newTestModel(t)
+	m.cfg = &config.Config{DiffTool: []string{"true"}}
+	m.pagerSides = &diffSides{name: "app", live: "LIVE\n", desired: "WANT\n"}
+
+	if cmd := m.diffToolCmd(); cmd == nil {
+		t.Fatal("with a tool configured there is something to run")
+	}
+	if left, _ := os.ReadDir(tmp); len(left) != 0 {
+		t.Fatalf("building the command touched the disk: %v", left)
+	}
+
+	out := filepath.Join(t.TempDir(), "out")
+	r := &diffToolRunner{
+		argv:  []string{"sh", "-c", `cat "$1" "$2" > "$3"`, "sh", "{live}", "{desired}", out},
+		sides: *m.pagerSides,
+	}
+	if err := r.Run(); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "LIVE\nWANT\n" {
+		t.Errorf("the tool saw %q, want both sides in order", got)
+	}
+	if left, _ := os.ReadDir(tmp); len(left) != 0 {
+		t.Errorf("temp files outlived the tool: %v", left)
 	}
 }
