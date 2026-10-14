@@ -109,39 +109,39 @@ func (m *Model) scheduleDetail(s scheduled) string {
 }
 
 // handleScheduleKey handles the scheduled-sync list.
-func (m *Model) handleScheduleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "j", "down":
+func (m *Model) handleScheduleKey(action string) (tea.Model, tea.Cmd) {
+	switch action {
+	case aNavDown:
 		m.scheduleCur++
-	case "k", "up":
+	case aNavUp:
 		m.scheduleCur--
-	case "g", "home":
+	case aNavTop:
 		m.scheduleCur = 0
-	case "G", "end":
+	case aNavBottom:
 		m.scheduleCur = len(m.schedules) - 1
-	case "ctrl+d", "pgdown":
+	case aNavPgDown:
 		m.scheduleCur += m.bodyHeight() / 2
-	case "ctrl+u", "pgup":
+	case aNavPgUp:
 		m.scheduleCur -= m.bodyHeight() / 2
-	case "x", "d":
+	case aSchedCancel:
 		// Cancelling is destructive only in the sense that the sync will not
 		// happen, which is recoverable by scheduling it again — so no
 		// confirmation, unlike the sync itself.
 		if s := m.currentSchedule(); s != nil {
 			m.cancelSchedule(s.id)
 		}
-	case "c":
+	case aSchedClear:
 		if n := m.clearFinishedSchedules(); n > 0 {
 			m.setToast(fmt.Sprintf("cleared %d finished", n))
 			m.clampScheduleCursor()
 		}
-	case "o":
+	case aSchedBrowser:
 		if s := m.currentSchedule(); s != nil {
 			if u := m.scheduleURL(*s); u != "" {
 				return m, m.openBrowserCmd([]string{u})
 			}
 		}
-	case "h", "left", "esc":
+	case aSchedLeave:
 		m.pop()
 		return m, nil
 	}

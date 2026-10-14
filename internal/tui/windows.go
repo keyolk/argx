@@ -225,38 +225,38 @@ func (m *Model) windowSummary() (text string, blocked bool) {
 }
 
 // handleWindowsKey drives the sync-window view.
-func (m *Model) handleWindowsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleWindowsKey(action string) (tea.Model, tea.Cmd) {
 	rows := m.windowRows()
-	switch msg.String() {
-	case "j", "down":
+	switch action {
+	case aNavDown:
 		m.windowCur++
-	case "k", "up":
+	case aNavUp:
 		m.windowCur--
-	case "ctrl+d", "pgdown":
+	case aNavPgDown:
 		m.windowCur += m.bodyHeight() / 2
-	case "ctrl+u", "pgup":
+	case aNavPgUp:
 		m.windowCur -= m.bodyHeight() / 2
-	case "g", "home":
+	case aNavTop:
 		m.windowCur, m.windowTop = 0, 0
-	case "G", "end":
+	case aNavBottom:
 		m.windowCur = len(rows) - 1
-	case "r", "ctrl+r":
+	case aWinReload:
 		if m.app != nil {
 			return m, m.loadWindowsCmd(*m.app)
 		}
-	case "o":
+	case aWinBrowser:
 		// Straight to the project's windows tab, which is where they are
 		// defined and edited — not to the project overview.
 		if m.app != nil {
 			return m, m.openBrowserCmd([]string{m.projectWindowsURL(m.app)})
 		}
-	case "O":
+	case aWinAppBrowser:
 		// The application's own page, for the reader who came here to check a
 		// schedule and now wants the app itself.
 		if m.app != nil {
 			return m, m.openBrowserCmd([]string{m.appURL(m.app)})
 		}
-	case "h", "left":
+	case aWinLeave:
 		m.pop()
 		return m, nil
 	}

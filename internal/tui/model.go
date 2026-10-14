@@ -23,11 +23,14 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/keyolk/tuikit/keys"
 
 	"github.com/keyolk/argx/internal/argocd"
 	"github.com/keyolk/argx/internal/config"
@@ -97,6 +100,8 @@ const (
 	// overlayContainer chooses which container of a multi-container pod to read
 	// logs from or exec into.
 	overlayContainer
+	// overlayPalette is the command palette (:), over the screen's actions.
+	overlayPalette
 )
 
 const (
@@ -117,6 +122,9 @@ type Model struct {
 
 	st *styles
 	gl glyphSet
+	// km is the binding table in effect; the zero value means the defaults
+	// (see keymap).
+	km keys.Keymap
 
 	width    int
 	height   int
@@ -198,6 +206,8 @@ type Model struct {
 	revPicker revPickerState
 	// picker is the container chooser backing overlayContainer.
 	picker containerPicker
+	// palette backs overlayPalette.
+	palette paletteState
 
 	// ---- pager views (diff, manifest, logs, events) ----
 	pager      []string
@@ -302,6 +312,9 @@ type Model struct {
 	autoRefresh bool
 	// tickGen identifies the live auto-refresh chain; see tickMsg.
 	tickGen uint64
+	// startErr is a problem found while building the model (a bad keys.yaml),
+	// reported as a toast by Init rather than refusing to start.
+	startErr error
 }
 
 // confirmState describes a pending yes/no prompt.
@@ -369,7 +382,11 @@ func New(ctx context.Context, fleet *argocd.Fleet, cfg *config.Config) *Model {
 	st := newStyles()
 	st.initContexts(len(fleet.Names()))
 	gl := newGlyphsFor(cfg.Icons)
-	return &Model{
+	// A broken keys.yaml must not keep argx from starting: the defaults run
+	// and the reason is shown once the first frame is up.
+	km, kmErr := loadKeymap()
+	m := &Model{
+		km:         km,
 		ctx:        ctx,
 		fleet:      fleet,
 		cfg:        cfg,
@@ -384,11 +401,21 @@ func New(ctx context.Context, fleet *argocd.Fleet, cfg *config.Config) *Model {
 		width:      80,
 		height:     24,
 	}
+	if kmErr != nil {
+		m.startErr = kmErr
+	}
+	return m
 }
 
 // Init loads the application list.
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(m.loadAppsCmd(), tea.WindowSize())
+	cmds := []tea.Cmd{m.loadAppsCmd(), tea.WindowSize()}
+	if err := m.startErr; err != nil {
+		cmds = append(cmds, func() tea.Msg {
+			return errMsg{err: fmt.Errorf("%w\n\nUsing the default keys.", err)}
+		})
+	}
+	return tea.Batch(cmds...)
 }
 
 // ---- selection helpers ----

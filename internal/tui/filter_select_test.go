@@ -454,7 +454,16 @@ func TestEscCancelsARangeFromInsideThePrompt(t *testing.T) {
 // The keys that mark are exactly the keys the prompt refuses to treat as text
 // or as text-cursor movement, and no others.
 func TestMarkKeysDoNotReachTheQuery(t *testing.T) {
-	for k := range filterMarkKeys {
+	var markKeys []string
+	for _, b := range baseKeymap.Bindings() {
+		if b.Ctx == ctxFilterMarks {
+			markKeys = append(markKeys, b.Keys...)
+		}
+	}
+	if len(markKeys) == 0 {
+		t.Fatal("no keys in the filter's mark context")
+	}
+	for _, k := range markKeys {
 		m := markModel(t, "web-a")
 		press(t, m, "/")
 		press(t, m, "w")

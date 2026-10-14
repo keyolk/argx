@@ -19,6 +19,9 @@ func newTestModel(t *testing.T, names ...string) *Model {
 	t.Helper()
 	// Isolate from the developer's own argocd session and $BROWSER.
 	t.Setenv("HOME", t.TempDir())
+	// keys.yaml and ui.json must come from the test, never the developer.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 
 	fleet := argocd.NewFleet([]config.Context{{Name: "test", Server: "argocd.test"}})
 	m := New(context.Background(), fleet, &config.Config{})
@@ -598,7 +601,7 @@ func TestHelpDocumentsQuitAndBack(t *testing.T) {
 	m := newTestModel(t, "alpha")
 	flat := strings.Join(m.helpLines(), "\n")
 
-	if !strings.Contains(flat, "q, ctrl+c") {
+	if !strings.Contains(flat, "q/ctrl+c") {
 		t.Errorf("help does not document the quit keys:\n%s", flat)
 	}
 	if strings.Contains(flat, "q quits at the app list") {

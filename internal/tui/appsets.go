@@ -254,35 +254,35 @@ func (m *Model) clampSetScroll() {
 }
 
 // handleAppSetsKey drives the ApplicationSet list.
-func (m *Model) handleAppSetsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "j", "down":
+func (m *Model) handleAppSetsKey(action string) (tea.Model, tea.Cmd) {
+	switch action {
+	case aNavDown:
 		m.appsetCur++
-	case "k", "up":
+	case aNavUp:
 		m.appsetCur--
-	case "ctrl+d", "pgdown":
+	case aNavPgDown:
 		m.appsetCur += m.bodyHeight() / 2
-	case "ctrl+u", "pgup":
+	case aNavPgUp:
 		m.appsetCur -= m.bodyHeight() / 2
-	case "g", "home":
+	case aNavTop:
 		m.appsetCur, m.appsetTop = 0, 0
-	case "G", "end":
+	case aNavBottom:
 		m.appsetCur = len(m.appsetRows) - 1
 
-	case "enter", "l", "right":
+	case aSetsOpen:
 		// Drilling in means seeing the applications this set generated, which
 		// is the application list with a filter it could not have expressed:
 		// membership is recorded on the applications, not derivable from a name.
 		if s := m.currentSet(); s != nil {
 			return m.showGeneratedApps(s)
 		}
-	case "y":
+	case aSetsSpec:
 		if s := m.currentSet(); s != nil {
 			m.push(screenManifest)
 			m.pager, m.pagerTitle = nil, "spec · "+s.Name()
 			return m, m.loadSetSpecCmd(*s)
 		}
-	case "o":
+	case aSetsBrowser:
 		if s := m.currentSet(); s != nil {
 			u, err := m.fleet.SetURL(s)
 			if err != nil {
@@ -291,9 +291,9 @@ func (m *Model) handleAppSetsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, m.openBrowserCmd([]string{u})
 		}
-	case "r", "ctrl+r":
+	case aSetsReload:
 		return m, m.loadAppSetsCmd()
-	case "E":
+	case aFleetErrors:
 		if len(m.fleetErrs) > 0 {
 			m.showError(fleetErrorText(m.fleetErrs))
 		}

@@ -340,29 +340,29 @@ func (m *Model) currentRev() (revItem, bool) {
 // handleRevPickerKey drives the picker. It has its own filter rather than
 // reusing the screen filter: the screen behind it keeps its own query, and
 // clobbering that on Esc would be a surprise.
-func (m *Model) handleRevPickerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleRevPickerKey(action string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	p := &m.revPicker
 	h := m.revPickerHeight()
 
-	switch msg.String() {
-	case "esc":
+	switch action {
+	case aRevCancel:
 		m.overlay = overlayNone
 		return m, nil
-	case "ctrl+n", "down":
+	case aRevDown:
 		p.cur++
-	case "ctrl+p", "up":
+	case aRevUp:
 		p.cur--
-	case "pgdown":
+	case aRevPgDown:
 		p.cur += h / 2
-	case "pgup":
+	case aRevPgUp:
 		p.cur -= h / 2
-	case "backspace":
+	case aRevBackspace:
 		if p.filter != "" {
 			r := []rune(p.filter)
 			p.filter = string(r[:len(r)-1])
 			m.applyRevFilter()
 		}
-	case "enter":
+	case aRevChoose:
 		it, ok := m.currentRev()
 		if !ok {
 			return m, nil

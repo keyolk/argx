@@ -9,33 +9,28 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-func (m *Model) handleAppsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleAppsKey(action string) (tea.Model, tea.Cmd) {
 	// The mark vocabulary is the same on both lists, so it is handled in one
 	// place; anything it does not claim falls through to the keys below.
-	if cmd, handled := m.handleMarkKey(msg.String(), m.appScope(), &m.appCur); handled {
+	if cmd, handled := m.handleMarkKey(action, m.appScope(), &m.appCur); handled {
 		return m, cmd
 	}
-	switch msg.String() {
-	case "j", "down":
+	switch action {
+	case aNavDown:
 		m.moveApp(1)
-	case "k", "up":
+	case aNavUp:
 		m.moveApp(-1)
-	case "ctrl+d", "pgdown":
+	case aNavPgDown:
 		m.moveApp(m.bodyHeight() / 2)
-	case "ctrl+u", "pgup":
+	case aNavPgUp:
 		m.moveApp(-m.bodyHeight() / 2)
-	case "g", "home":
+	case aNavTop:
 		m.appCur, m.appTop = 0, 0
-	case "G", "end":
+	case aNavBottom:
 		m.appCur = len(m.appRows) - 1
 		m.clampScroll()
 
-	case "ctrl+\\":
-		// Not bound — listed here only as a reminder that terminal-reserved
-		// keys stay unbound.
-		return m, nil
-
-	case "enter", "l", "right":
+	case aAppsOpen:
 		if a := m.currentApp(); a != nil {
 			m.push(screenApp)
 			m.tab = tabResources
@@ -51,44 +46,44 @@ func (m *Model) handleAppsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// and being rejected is worse.
 			return m, tea.Batch(m.loadTreeCmd(*a), m.loadWindowsCmd(*a))
 		}
-	case "d":
+	case aAppsDiff:
 		if a := m.currentApp(); a != nil {
 			m.push(screenDiff)
 			m.pager, m.pagerTitle = nil, "diff · "+a.Name()
 			return m, m.loadAppDiffCmd(*a)
 		}
-	case "e":
+	case aAppsEvents:
 		if a := m.currentApp(); a != nil {
 			m.push(screenEvents)
 			m.pager, m.pagerTitle = nil, "events · "+a.Name()
 			return m, m.loadEventsCmd(*a)
 		}
-	case "o":
+	case aAppsBrowser:
 		return m, m.openMarkedApps()
-	case "r":
+	case aAppsRefresh:
 		targets := m.markedApps()
 		if len(targets) == 0 {
 			return m, nil
 		}
 		m.loading, m.loadWhat = true, "refresh"
 		return m, m.refreshCmd(targets, false)
-	case "R":
+	case aAppsHardRefresh:
 		targets := m.markedApps()
 		if len(targets) == 0 {
 			return m, nil
 		}
 		m.loading, m.loadWhat = true, "hard refresh"
 		return m, m.refreshCmd(targets, true)
-	case "s":
+	case aAppsSync:
 		return m.openSyncModal()
-	case "ctrl+r":
+	case aAppsReload:
 		return m, m.loadAppsCmd()
-	case "E":
+	case aFleetErrors:
 		// The status line names the unreachable servers; this shows why.
 		if len(m.fleetErrs) > 0 {
 			m.showError(fleetErrorText(m.fleetErrs))
 		}
-	case "F":
+	case aAppsFollow:
 		// Follow. This was A until the mark vocabulary claimed that letter for
 		// "clear the visible marks", at which point the mark handler — which
 		// runs first, because both lists share it — swallowed the key and
@@ -108,26 +103,26 @@ func (m *Model) handleAppsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) handleTreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	if cmd, handled := m.handleMarkKey(msg.String(), m.treeScope(), &m.treeCur); handled {
+func (m *Model) handleTreeKey(action string) (tea.Model, tea.Cmd) {
+	if cmd, handled := m.handleMarkKey(action, m.treeScope(), &m.treeCur); handled {
 		return m, cmd
 	}
-	switch msg.String() {
-	case "j", "down":
+	switch action {
+	case aNavDown:
 		m.moveTree(1)
-	case "k", "up":
+	case aNavUp:
 		m.moveTree(-1)
-	case "ctrl+d", "pgdown":
+	case aNavPgDown:
 		m.moveTree(m.bodyHeight() / 2)
-	case "ctrl+u", "pgup":
+	case aNavPgUp:
 		m.moveTree(-m.bodyHeight() / 2)
-	case "g", "home":
+	case aNavTop:
 		m.treeCur, m.treeTop, m.graphTop = 0, 0, 0
-	case "G", "end":
+	case aNavBottom:
 		m.treeCur = len(m.treeRows) - 1
 		m.clampScroll()
 
-	case "t":
+	case aTreeGraph:
 		// Rendering only: the cursor keeps walking treeRows in the same DFS
 		// order either way, so toggling mid-browse does not lose the reader's
 		// place the way switching screens would.
@@ -143,7 +138,7 @@ func (m *Model) handleTreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.clampScroll()
 
-	case "enter", "right":
+	case aTreeManifest:
 		// `l` would be the third key here, and on this list it is already
 		// logs — so `right` carries the "drill in" half of the pair on its own
 		// rather than the tree being the one screen where → does nothing.
@@ -152,7 +147,7 @@ func (m *Model) handleTreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.pager, m.pagerTitle = nil, "manifest · "+n.Name
 			return m, m.loadManifestCmd(*m.app, *n)
 		}
-	case "d":
+	case aTreeDiff:
 		// The marked resources, or the one under the cursor.
 		if m.app == nil {
 			return m, nil
@@ -164,7 +159,7 @@ func (m *Model) handleTreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.push(screenDiff)
 		m.pager, m.pagerTitle = nil, "diff"
 		return m, m.loadResourceDiffCmd(*m.app, nodes)
-	case "D":
+	case aTreeAppDiff:
 		// The whole application, regardless of what is marked. "What is
 		// different about this application" is the question you arrive at the
 		// resource tree with, and it had no key: d narrowed to a selection, and
@@ -175,31 +170,31 @@ func (m *Model) handleTreeKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.push(screenDiff)
 		m.pager, m.pagerTitle = nil, "diff · "+m.app.Name()
 		return m, m.loadAppDiffCmd(*m.app)
-	case "L", "l":
+	case aTreeLogs:
 		if n := m.currentNode(); n != nil {
 			return m, m.openContainerPicker(*n, containerForLogs)
 		}
-	case "e":
+	case aTreeShell:
 		// A shell in the container. It goes through Argo CD rather than
 		// kubectl, so the session inherits its RBAC and lands in its audit log.
 		if n := m.currentNode(); n != nil {
 			return m, m.openContainerPicker(*n, containerForExec)
 		}
-	case "s":
+	case aTreeSync:
 		return m.openTreeSyncModal()
 	}
 	return m, nil
 }
 
-func (m *Model) handlePagerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handlePagerKey(action string) (tea.Model, tea.Cmd) {
 	// Stepping between matches rather than through the context around them is
 	// what makes a search over a long manifest usable.
-	switch msg.String() {
-	case "n":
+	switch action {
+	case aPagerNext:
 		return m, m.jumpToHit(1)
-	case "N":
+	case aPagerPrev:
 		return m, m.jumpToHit(-1)
-	case "s":
+	case aDiffSxS:
 		// Side by side. Only in the diff view: a manifest or a log has no two
 		// sides to lay out, and a key that silently does nothing on three
 		// screens out of four is a key people stop trusting.
@@ -220,14 +215,14 @@ func (m *Model) handlePagerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				sxsMinWidth, m.width))
 		}
 		return m, nil
-	case "D":
+	case aDiffTool:
 		// The external tool. Only where there is something to hand it: `D` on a
 		// log view would launch a diff of nothing.
 		if m.screen != screenDiff {
 			return m, nil
 		}
 		return m, m.diffToolCmd()
-	case "H":
+	case aDiffPairing:
 		// Pairing off. A pairing is a *claim* — that these two differently-named
 		// objects are one resource — inferred from a name pattern, so the
 		// reader has to be able to see the two documents it was made from. Only
@@ -244,7 +239,7 @@ func (m *Model) handlePagerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.rerenderDiff()
 		return m, nil
-	case "M":
+	case aPagerNoise:
 		// The bookkeeping fields, back on. They are hidden by default because
 		// they bury everything else, not because they never matter.
 		m.showNoise = !m.showNoise
@@ -261,20 +256,20 @@ func (m *Model) handlePagerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	if maxTop < 0 {
 		maxTop = 0
 	}
-	switch msg.String() {
-	case "j", "down":
+	switch action {
+	case aNavDown:
 		m.pagerTop++
-	case "k", "up":
+	case aNavUp:
 		m.pagerTop--
-	case "ctrl+d", "pgdown":
+	case aNavPgDown:
 		m.pagerTop += m.bodyHeight() / 2
-	case "ctrl+u", "pgup":
+	case aNavPgUp:
 		m.pagerTop -= m.bodyHeight() / 2
-	case "g", "home":
+	case aNavTop:
 		m.pagerTop = 0
-	case "G", "end":
+	case aNavBottom:
 		m.pagerTop = maxTop
-	case "h", "left":
+	case aPagerLeave:
 		m.pop()
 		return m, nil
 	}

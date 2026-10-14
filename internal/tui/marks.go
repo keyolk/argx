@@ -163,7 +163,7 @@ func (s markScope) markRange(from, to int) int {
 //
 // It returns false when the key is not one of these, so each list's own handler
 // can carry on with it.
-func (m *Model) handleMarkKey(k string, scope markScope, cur *int) (tea.Cmd, bool) {
+func (m *Model) handleMarkKey(action string, scope markScope, cur *int) (tea.Cmd, bool) {
 	// While the list is narrowed to the selection, changing the selection
 	// changes the list — otherwise unmarking a row leaves it on screen, and
 	// clearing everything leaves a list of rows that are no longer marked.
@@ -173,8 +173,8 @@ func (m *Model) handleMarkKey(k string, scope markScope, cur *int) (tea.Cmd, boo
 		}
 	}()
 
-	switch k {
-	case " ":
+	switch action {
+	case aMarkToggle:
 		// Space toggles and advances, so marking a run of adjacent rows is one
 		// key repeated rather than an alternation of space and j.
 		if *cur >= 0 && *cur < len(scope.keys) {
@@ -189,7 +189,7 @@ func (m *Model) handleMarkKey(k string, scope markScope, cur *int) (tea.Cmd, boo
 		}
 		return nil, true
 
-	case "a":
+	case aMarkAll:
 		if n := scope.markAll(); n > 0 {
 			m.setToast(fmt.Sprintf("marked %d more (%d total)", n, scope.markedCount()))
 		} else if len(scope.keys) > 0 {
@@ -199,7 +199,7 @@ func (m *Model) handleMarkKey(k string, scope markScope, cur *int) (tea.Cmd, boo
 		}
 		return nil, true
 
-	case "A":
+	case aMarkClear:
 		cleared, hidden := scope.clearVisible()
 		switch {
 		case cleared == 0 && hidden == 0:
@@ -220,11 +220,11 @@ func (m *Model) handleMarkKey(k string, scope markScope, cur *int) (tea.Cmd, boo
 		m.visualFrom = -1
 		return nil, true
 
-	case "i":
+	case aMarkInvert:
 		m.setToast(fmt.Sprintf("inverted — %d marked", scope.invert()))
 		return nil, true
 
-	case "+":
+	case aMarkAdd:
 		// Additive, unlike a: the point is building a selection across several
 		// filters, so this never removes anything.
 		if n := scope.markAll(); n > 0 {
@@ -234,7 +234,7 @@ func (m *Model) handleMarkKey(k string, scope markScope, cur *int) (tea.Cmd, boo
 		}
 		return nil, true
 
-	case "v":
+	case aMarkRange:
 		if m.visualFrom >= 0 {
 			// Ending the range marks it, including the row under the cursor.
 			n := scope.markRange(m.visualFrom, *cur)
@@ -251,7 +251,7 @@ func (m *Model) handleMarkKey(k string, scope markScope, cur *int) (tea.Cmd, boo
 		// Saying it a third time is how a status line stops being read.
 		return nil, true
 
-	case "m":
+	case aMarkOnly:
 		// Show only what is marked. A selection of forty built across several
 		// filters is otherwise something the reader has to take on trust.
 		if len(scope.marks) == 0 {
@@ -268,7 +268,7 @@ func (m *Model) handleMarkKey(k string, scope markScope, cur *int) (tea.Cmd, boo
 		m.reapplyFilter()
 		return nil, true
 
-	case "J", "shift+down":
+	case aMarkExtendDown:
 		// Extend downward: mark where the cursor is, then move. Shift+move is
 		// what a selection does in every editor and every file manager, and a
 		// reader who has never read the help will try it before they try v.
@@ -281,7 +281,7 @@ func (m *Model) handleMarkKey(k string, scope markScope, cur *int) (tea.Cmd, boo
 		m.extendMark(scope, cur, 1)
 		return nil, true
 
-	case "K", "shift+up":
+	case aMarkExtendUp:
 		m.extendMark(scope, cur, -1)
 		return nil, true
 	}
@@ -335,20 +335,20 @@ func (m *Model) extendMark(scope markScope, cur *int, d int) {
 //
 // Only the two lists that have marks are wired up. Everywhere else the arrows
 // keep their text-cursor meaning, since there would be nothing to mark.
-func (m *Model) markWhileFiltering(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) markWhileFiltering(action string) (tea.Model, tea.Cmd) {
 	scope, cur, ok := m.markableList()
 	if !ok {
 		return m, nil
 	}
-	switch msg.String() {
-	case "right":
+	switch action {
+	case aFilterMark:
 		// Mark and advance, which is what space does on the list.
 		if *cur >= 0 && *cur < len(scope.keys) {
 			scope.marks[scope.keys[*cur]] = true
 			*cur++
 			m.clampScroll()
 		}
-	case "left":
+	case aFilterUnmark:
 		// The inverse: step back onto the row → last marked, and unmark it.
 		if *cur > 0 {
 			*cur--
@@ -357,9 +357,9 @@ func (m *Model) markWhileFiltering(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		if *cur >= 0 && *cur < len(scope.keys) {
 			delete(scope.marks, scope.keys[*cur])
 		}
-	case "shift+down":
+	case aFilterExtendDown:
 		m.extendMark(scope, cur, 1)
-	case "shift+up":
+	case aFilterExtendUp:
 		m.extendMark(scope, cur, -1)
 	}
 	// The narrowed-to-marks view has to follow the selection here too, or
@@ -368,30 +368,6 @@ func (m *Model) markWhileFiltering(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.syncMarkedOnly()
 	}
 	return m, nil
-}
-
-// filterMarkKeys are the keys that mark from inside the filter prompt.
-//
-// This is also the list the prompt refuses to treat as text or as text-cursor
-// movement, so a key joins it deliberately.
-var filterMarkKeys = map[string]bool{
-	"right":      true,
-	"left":       true,
-	"shift+down": true,
-	"shift+up":   true,
-}
-
-// marksInFilter reports whether this keypress marks rather than edits the query.
-//
-// It is false wherever there are no marks, so on a pager or the ApplicationSet
-// list the arrows go on moving the text cursor: taking a key away from editing
-// to do nothing is worse than not taking it.
-func (m *Model) marksInFilter(msg tea.KeyMsg) bool {
-	if !filterMarkKeys[msg.String()] {
-		return false
-	}
-	_, _, ok := m.markableList()
-	return ok
 }
 
 // markableList is the list in front and its cursor, when it is one that marks.

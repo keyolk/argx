@@ -84,20 +84,20 @@ func (m *Model) chooseContainer() (tea.Model, tea.Cmd) {
 }
 
 // handleContainerKey drives the picker.
-func (m *Model) handleContainerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleContainerKey(action string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	p := &m.picker
-	switch msg.String() {
-	case "esc":
+	switch action {
+	case aPickCancel:
 		m.overlay = overlayNone
-	case "j", "down", "ctrl+n":
+	case aPickDown:
 		p.cur++
-	case "k", "up", "ctrl+p":
+	case aPickUp:
 		p.cur--
-	case "g", "home":
+	case aPickTop:
 		p.cur = 0
-	case "G", "end":
+	case aPickBottom:
 		p.cur = len(p.containers) - 1
-	case "enter", " ":
+	case aPickChoose:
 		return m.chooseContainer()
 	default:
 		// A digit selects directly, which is faster than arrowing for the two-
@@ -167,7 +167,7 @@ func (m *Model) renderContainerPicker() string {
 	}
 
 	lines = append(lines, "",
-		m.st.dim.Render("1-9 or enter select  ·  j/k move  ·  esc cancel"))
+		m.st.dim.Render("1-9 select  ·  ")+m.modalHint(stackContainer, w-14))
 	return m.st.modal.Render(strings.Join(
 		clampModalBody(lines, w, m.modalContentHeight()), "\n"))
 }

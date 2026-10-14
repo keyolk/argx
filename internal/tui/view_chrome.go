@@ -191,6 +191,12 @@ func (m *Model) renderStatus() string {
 		if m.app != nil {
 			parts = append(parts, m.st.dim.Render(m.app.Name()))
 		}
+		// A reader on this screen is usually here because syncing is blocked,
+		// which is the one moment "you can wait for it instead" is worth
+		// knowing. Not a footer hint: no key here does it, the sync options do.
+		parts = append(parts, m.st.dim.Render(fmt.Sprintf(
+			"to schedule a sync: %s, then %s in the sync options",
+			m.keyHint(aDetailsSync), m.keyHint(aOptWait))))
 
 	default:
 		res := m.searchPager()
@@ -333,135 +339,22 @@ func (m *Model) renderFilter(q string) string {
 		m.st.filter.Render(after)
 }
 
-// syncHint labels the sync key, saying so when a window is blocking.
+// renderFooter is the always-visible hint line, derived from the binding
+// table for the keys that are live right now.
 //
-// "s sync" on an application argx already knows cannot sync is an invitation to
-// press it and have Argo CD record a failed operation. Naming the alternative
-// costs four cells and is only shown when it applies.
-func (m *Model) syncHint() string {
-	if m.syncBlocked() {
-		return "s sync (w waits)"
-	}
-	return "s sync"
-}
-
-// renderFooter is the always-visible hint line, per screen.
+// The narrowing keeps argx's old priorities as data: each binding's Footer
+// number says how long it survives a narrow terminal, and quit, help and back
+// are pinned — the exit is how you leave, help is the only place the keys that
+// did not fit are written down, and esc is the one exit that keeps the
+// reader's place. The pending-schedule hint leads because schedules run only
+// in this process and are otherwise invisible from wherever the reader is.
+//
+// A filter prompt and a range in progress are modes, so the hints change with
+// them: the prompt's stack has no list keys (almost every key is text there),
+// and a range shows only the keys that end it (see actionVisible).
 func (m *Model) renderFooter() string {
-	var hints []string
-	switch m.screen {
-	case screenApps:
-		// "space mark" alone taught marking one row and nothing else, so the
-		// mark keys sat undiscovered behind a key nobody had reason to press.
-		// They lead now, because every destructive action here takes its
-		// targets from the selection.
-		hints = []string{"space/a/A mark", "J/K extend", "v range", "enter open",
-			"s sync", "d diff", "o browser", "W schedules", "S appsets",
-			"C contexts", "/ filter", "? help", "q quit"}
-	case screenApp:
-		switch m.tab {
-		case tabHistory:
-			hints = []string{"enter rollback", "[ ] tabs", "d diff", "w windows", "o browser", "esc back", "q quit"}
-		case tabDetails:
-			hints = []string{"enter edit", "[ ] tabs", m.syncHint(), "w windows", "e events", "esc back", "q quit"}
-		default:
-			hints = []string{"space/a/A mark", "J/K extend", "v range",
-				"enter manifest", "d diff", "D app diff", "l logs", "e shell",
-				"t graph", m.syncHint(), "w windows", "esc back", "q quit"}
-			if m.treeGraphActive() {
-				// h/← means something different only here — moving toward the
-				// root inside the graph rather than leaving the screen — so it
-				// is worth naming once it actually does that.
-				hints = append([]string{"h parent"}, hints...)
-			}
-		}
-	case screenAppSets:
-		hints = []string{"enter apps", "y spec", "o browser", "S applications", "/ filter", "? help", "q quit"}
-	case screenWindows:
-		// A reader on this screen is here because syncing is blocked, which is
-		// the one moment "you can wait for it instead" is worth knowing.
-		hints = []string{"j/k move", "s+w schedule a sync", "o project", "O app", "r reload", "esc back", "q quit"}
-	case screenSchedule:
-		hints = []string{"j/k move", "x cancel", "c clear finished", "o browser", "esc back", "q quit"}
-	case screenContexts:
-		if m.ctxDetail {
-			hints = []string{"j/k scroll", "o browser", "esc back to the list", "q quit"}
-		} else {
-			hints = []string{"j/k move", "enter details", "o browser", "r reload", "esc back", "q quit"}
-		}
-	case screenHelp:
-		hints = []string{"esc back", "q quit"}
-	default:
-		hints = []string{"j/k scroll", "/ search", "n/N match", "M noise", "esc back", "q quit"}
-		if m.screen == screenDiff {
-			// The diff view has two more, and they are the ones nobody guesses.
-			hints = []string{"j/k scroll", "s side-by-side", "D diff tool",
-				"/ search", "n/N match", "M noise", "H hash pairing",
-				"esc back", "q quit"}
-		}
-	}
-
-	// Pending syncs lead, on every screen. They exist only in this process and
-	// are otherwise invisible from wherever the reader happens to be, so the way
-	// back to them has to survive the narrowing below — which drops from the
-	// right — rather than being the first thing to go.
-	if n := m.pendingSchedules(); n > 0 && m.screen != screenSchedule {
-		hints = append([]string{fmt.Sprintf("W %d scheduled", n)}, hints...)
-	}
-	// An open filter prompt replaces the hints entirely, for the same reason:
-	// it is a mode, and almost every key named above is text while it is on.
-	// The three that are not are the ones nobody would guess — the mark keys
-	// have to be modified here, since space and J are characters — so this is
-	// the only place they get written down at the moment they apply.
-	if m.filtering {
-		hints = []string{"↑↓ move", "enter keep", "esc clear"}
-		if _, _, ok := m.markableList(); ok {
-			// alt is what the whole vocabulary wears in here, so it is said once
-			// rather than on every key: naming alt+a, alt+A and alt+i separately
-			// costs three times the width to say the same thing.
-			hints = []string{"↑↓ move", "→ mark", "← unmark", "shift+↑↓ extend",
-				"enter keep the query", "esc clear"}
-		}
-	}
-	// A range in progress replaces the hints entirely. It is a mode, and the
-	// two keys that end it are the only ones worth naming while it is on.
-	if m.visualFrom >= 0 {
-		hints = []string{"move to extend", "v take the range", "esc cancel"}
-	}
-
-	// Drop hints from the right until the line fits, so a narrow terminal keeps
-	// the most important ones rather than wrapping.
-	//
-	// Except the last ones. Every list ends in "q quit", and most end in
-	// "? help" before it; a footer that drops either to make room for "d diff"
-	// has cut the wrong thing. The exit is how you leave, and the help is the
-	// only place the keys that did not fit are written down — dropping it
-	// exactly when the footer is too small to list them is the worst moment.
-	// "esc back" is an exit too, and on a screen the reader drilled into it is
-	// the *only* one that does not lose their place — so it is kept for the
-	// same reason, rather than being the first casualty of a new hint.
-	keep := 0
-	for keep < len(hints) {
-		switch hints[len(hints)-1-keep] {
-		case "q quit", "? help", "esc back":
-			keep++
-			continue
-		}
-		break
-	}
-	if keep == 0 {
-		keep = 1
-	}
-	tail := strings.Join(hints[len(hints)-keep:], "  ")
-	body := hints[:len(hints)-keep]
-	for len(body) > 0 {
-		s := strings.Join(append(append([]string{}, body...), tail), "  ")
-		if lipgloss.Width(s) <= m.width {
-			break
-		}
-		body = body[:len(body)-1]
-	}
-	hints = append(body, tail)
-	return m.st.footer.Render(truncate(strings.Join(hints, "  "), m.width))
+	line := m.keymap().Footer(m.keyStack(), m.width, m.keyOpts(), m.footerStyle())
+	return m.st.footer.Render(line)
 }
 
 // confirmChoices draws the yes/no pair with the cursor on one of them.
@@ -497,8 +390,7 @@ func (m *Model) renderOverlay(frame string) string {
 		w := m.modalContentWidth(76)
 		lines := []string{m.st.warn.Render(m.confirm.title), ""}
 		lines = append(lines, m.confirm.body...)
-		lines = append(lines, "", m.confirmChoices(),
-			m.st.dim.Render("h/l move · enter take it · y/n outright"))
+		lines = append(lines, "", m.confirmChoices(), m.modalHint(stackConfirm, w))
 		box = m.st.modal.Render(strings.Join(
 			clampModalBody(lines, w, m.modalContentHeight()), "\n"))
 
@@ -507,6 +399,9 @@ func (m *Model) renderOverlay(frame string) string {
 
 	case overlayRevPicker:
 		box = m.renderRevPicker()
+
+	case overlayPalette:
+		box = m.renderPalette()
 
 	case overlaySyncOpts:
 		check := func(on bool) string {
@@ -533,14 +428,14 @@ func (m *Model) renderOverlay(frame string) string {
 			m.st.accent.Render("Sync options"),
 			m.st.dim.Render(scope),
 			"",
-			row(0, check(m.syncOpts.prune)+" "+m.st.info.Render("p")+" prune  "+
+			row(0, check(m.syncOpts.prune)+" "+m.st.info.Render(m.keyHint(aOptPrune))+" prune  "+
 				m.st.dim.Render("(delete resources not in git)")),
-			row(1, check(m.syncOpts.dryRun)+" "+m.st.info.Render("d")+" dry-run  "+
+			row(1, check(m.syncOpts.dryRun)+" "+m.st.info.Render(m.keyHint(aOptDryRun))+" dry-run  "+
 				m.st.dim.Render("(compute only, apply nothing)")),
-			row(2, check(m.syncOpts.schedule)+" "+m.st.info.Render("w")+" wait for the sync window  "+
+			row(2, check(m.syncOpts.schedule)+" "+m.st.info.Render(m.keyHint(aOptWait))+" wait for the sync window  "+
 				m.st.dim.Render("(while argx runs)")),
 			"",
-			m.st.dim.Render("j/k move   ·   space toggle   ·   enter continue   ·   esc cancel"),
+			m.modalHint(stackSyncOpts, m.modalContentWidth(64)),
 		}
 		if m.syncBlocked() && !m.syncOpts.schedule {
 			// Syncing now would be rejected and recorded as a failed operation.
@@ -548,7 +443,7 @@ func (m *Model) renderOverlay(frame string) string {
 			lines = append(lines[:len(lines)-2],
 				m.st.err.Render("A sync window is blocking this — syncing now will be refused."),
 				"",
-				m.st.dim.Render("j/k move   ·   space toggle   ·   enter continue   ·   esc cancel"))
+				m.modalHint(stackSyncOpts, m.modalContentWidth(64)))
 		}
 		box = m.st.modal.Render(strings.Join(
 			clampModalBody(lines, m.modalContentWidth(64), m.modalContentHeight()), "\n"))
@@ -671,7 +566,7 @@ func (m *Model) renderRevPicker() string {
 	}
 
 	lines = append(lines, "",
-		m.st.dim.Render("type to filter  ·  ↑↓ move  ·  enter select  ·  esc cancel"))
+		m.st.dim.Render("type to filter  ·  ")+m.modalHint(stackRevPicker, w-18))
 	return m.st.modal.Render(strings.Join(
 		clampModalBody(lines, w, m.modalContentHeight()), "\n"))
 }

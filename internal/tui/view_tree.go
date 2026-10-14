@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/keyolk/tuikit/keys"
 )
 
 // renderTree is the resource tree of the focused application.
@@ -189,91 +190,31 @@ func (m *Model) renderPager() string {
 }
 
 // helpLines builds the help content. It is a []string rather than a rendered
-// block so the help scrolls with the same pager keys as every other long view;
-// a help screen taller than the terminal that silently cuts off is worse than
-// no help.
+// block so the help scrolls (and searches) with the same pager keys as every
+// other long view; a help screen taller than the terminal that silently cuts
+// off is worse than no help.
+//
+// The key sections come from the binding table — the screen help was opened
+// from first, then every other stack — so help cannot describe a key the
+// dispatcher does not route. What follows them is reference that is not about
+// keys: the filter syntax and the status letters.
 func (m *Model) helpLines() []string {
+	from := m.screen
+	if from == screenHelp && len(m.prev) > 0 {
+		from = m.prev[len(m.prev)-1]
+	}
+	stacks := append([][]keys.Ctx{m.stackFor(from)}, allStacks()...)
+	secs := m.keymap().Help(m.keyOpts(), stacks...)
+	// Every line fits on one page this tall, so RenderHelp returns them all
+	// and the pager does the scrolling.
+	lines, _ := keys.RenderHelp(secs, m.width, 1<<20, 0, m.helpStyle())
+	lines = append(lines, "")
+
 	type row struct{ k, d string }
-	sections := []struct {
+	notes := []struct {
 		title string
 		rows  []row
 	}{
-		{"navigation", []row{
-			{"j/k, ↑/↓", "move"},
-			{"ctrl+d / ctrl+u", "half page"},
-			{"g / G", "top / bottom"},
-			{"enter, l, →", "drill in — l is logs on the RESOURCES tab,"},
-			{"", "where → carries the pair on its own"},
-			{"esc, h, ←", "back one screen — except the application view,"},
-			{"", "which only leaves on esc; h/← there moves inside the"},
-			{"", "graph instead of doubling as an exit"},
-			{"q, ctrl+c", "quit, from anywhere"},
-			{"/", "filter (esc clears, enter keeps)"},
-			{"esc on a filtered list", "clear the filter — a standing query is a"},
-			{"", "level of its own, and esc unwinds one level"},
-			{"←/→ in a filter", "move the text cursor — except on a list that"},
-			{"", "marks, where they select; ctrl+b/f move it there"},
-			{"↑/↓ in a filter", "move through the rows the query matched"},
-			{"ctrl+a/e ctrl+w", "start / end of line, delete a word"},
-			{"?", "this help"},
-		}},
-		{"multi-select", []row{
-			{"space", "toggle this row and advance"},
-			{"v", "range — move, then v again; esc cancels"},
-			{"a", "mark every visible row (never unmarks)"},
-			{"A", "clear the visible marks; again for those the filter hides"},
-			{"i", "invert the visible rows"},
-			{"J / K", "extend the selection down / up — shift+↑↓ too"},
-			{"", ""},
-			{"in a filter", "→ marks this row and moves down, ← moves back"},
-			{"", "up and unmarks — an exact pair, so one row too"},
-			{"", "far is undone by the other arrow"},
-			{"shift+↑↓", "extend, as J/K do outside the prompt"},
-			{"", "for a / A / i / + press enter first: it keeps the"},
-			{"", "query, so `a` still means all of what you narrowed to"},
-			{"", "marks as it goes and never unmarks, so overshooting"},
-			{"", "and coming back is harmless"},
-			{"+", "add the visible rows, keeping what is already marked —"},
-			{"", "which is how a selection is built across several filters"},
-			{"m", "show only what is marked, to check it before acting"},
-			{"", ""},
-			{"", "everything is scoped to the filtered rows — marking what"},
-			{"", "you cannot see is how a sync hits the wrong thing"},
-			{"", "marks the filter hides are counted in the status line"},
-			{"", "actions apply to marks, or to the cursor row when none"},
-		}},
-		{"applications", []row{
-			{"S", "the application sets that generate them"},
-			{"o", "open in browser"},
-			{"d", "diff (desired vs live)"},
-			{"e", "events"},
-			{"r / R", "refresh / hard refresh"},
-			{"s", "sync (options, then confirm)"},
-			{"ctrl+r", "reload the list"},
-			{"F", "follow — 15s auto-refresh"},
-		}},
-		{"application view", []row{
-			{"[ / ]  tab", "previous / next tab"},
-			{"1 / 2 / 3", "RESOURCES / HISTORY / DETAILS"},
-			{"w", "sync windows"},
-			{"o", "open the application in browser"},
-			{"r", "reload"},
-			{"esc", "back to the list"},
-		}},
-		{"RESOURCES tab", []row{
-			{"enter, →", "live manifest"},
-			{"d", "diff of the marked resources"},
-			{"D", "diff of the whole application"},
-			{"l / L", "pod logs"},
-			{"e", "a shell in the container, through Argo CD"},
-			{"", "a multi-container pod asks which one first"},
-			{"s", "sync the marked resources"},
-			{"t", "graph view — Argo CD UI style, app fanning out to its"},
-			{"", "resources left to right. Falls back to the list while a"},
-			{"", "filter or marked-only view is narrowing the tree"},
-			{"h, ←", "move to the current resource's parent, in the graph"},
-			{"/", "filter — see below"},
-		}},
 		{"application filter", []row{
 			{"web", "name, context, project, destination, status,"},
 			{"", "revision, repo, path — everything the row shows"},
@@ -283,27 +224,6 @@ func (m *Model) helpLines() []string {
 			{"cluster: sync:", "destination cluster, sync status"},
 			{"health:degraded", "health status"},
 			{"!ctx:prod, !web", "a `!` prefix negates any field, name included"},
-			{"tab", "complete the word under the cursor"},
-		}},
-		{"diffs", []row{
-			{"H", "pair resources whose names carry a content hash —"},
-			{"", "a rotated ConfigMap reads as the edit it is rather"},
-			{"", "than as a create and a prune of two objects. On by"},
-			{"", "default; H shows the two documents it inferred from"},
-			{"", "(the Deployment mounting it still shows separately)"},
-			{"s", "side by side — the old and new value on one row"},
-			{"", "needs 100 columns; below that it stays unified"},
-			{"D", "hand the two documents to your own diff tool"},
-			{"", "set diff_tool in the config, or $ARGX_DIFF_TOOL"},
-			{"", "it gets the documents, not argx's patch, so a tool"},
-			{"", "that highlights words or folds can do its own work"},
-		}},
-		{"manifests and diffs", []row{
-			{"/", "search — each match is labelled with its JSON path"},
-			{"", "and shown with the lines around it"},
-			{"n / N", "next / previous match"},
-			{"M", "show managedFields and other bookkeeping"},
-			{"", "hidden by default: 39% of a real pod manifest"},
 		}},
 		{"resource filter", []row{
 			{"web", "name contains web"},
@@ -314,67 +234,37 @@ func (m *Model) helpLines() []string {
 			{"", "terms are ANDed: kind:pod status:degraded"},
 			{"!kind:pod, !web", "a `!` prefix negates any field, name included"},
 		}},
-		{"HISTORY tab", []row{
-			{"enter, b", "roll back to this deployment"},
-			{"d", "diff against live"},
+		{"application set filter", []row{
+			{"gen:git", "generator; also status:error, ctx:, proj:, ns:, label:"},
+			{"", "a broken generator shows up here and nowhere else"},
 		}},
-		{"DETAILS tab", []row{
-			{"enter", "change the marked row under the cursor"},
-			{"", "revision, auto-sync, prune, self-heal, terminate"},
-			{"s", "sync"},
-			{"e", "events"},
-		}},
-		{"application sets", []row{
-			{"S", "switch between applications and application sets"},
-			{"enter", "the applications this set generated"},
-			{"y", "its full spec"},
-			{"o", "open in browser"},
-			{"/", "filter — gen:git, status:error, ctx:, proj:, ns:, label:"},
-			{"", "a broken generator shows up here and nowhere else:"},
-			{"", "the applications it would have made do not exist"},
-			{"", "a `!` prefix negates any of these, name included"},
-		}},
-		{"sync windows", []row{
-			{"w", "the schedules that allow or block syncing"},
-			{"j/k, g/G", "move through the list"},
-			{"o", "open the project in browser — where windows are edited"},
-			{"O", "open the application in browser"},
-			{"r", "reload"},
-			{"", "defined per AppProject; argx shows them, does not edit them"},
-			{"", "a blocked sync is flagged in the status line on every tab"},
-		}},
-		{"contexts", []row{
-			{"C", "the servers this session is on, and as whom"},
-			{"enter", "the full credential: source, claims, permissions"},
-			{"", "an SSO email, an API key's id, when it expires,"},
-			{"", "and what Argo CD's RBAC will let argx do there"},
-			{"o", "open the server in browser"},
-			{"r", "re-ask every server"},
-			{"", "a fleet holds several credentials at once, and which"},
-			{"", "one is in play is invisible until something is refused"},
+		{"multi-select", []row{
+			{"", "everything is scoped to the filtered rows — marking what"},
+			{"", "you cannot see is how a sync hits the wrong thing"},
+			{"", "marks the filter hides are counted in the status line"},
+			{"", "actions apply to marks, or to the cursor row when none"},
 		}},
 		{"scheduled syncs", []row{
-			{"s then w", "wait for the sync window instead of syncing now"},
+			{"", "s then w waits for the sync window instead of syncing now:"},
 			{"", "Argo CD records a sync into a closed window as a failed"},
-			{"", "operation; waiting leaves no such trace"},
-			{"W", "the list of scheduled syncs"},
-			{"x", "cancel the one under the cursor"},
-			{"c", "clear the finished rows"},
-			{"", "they live only while argx runs — quitting drops them"},
-			{"", "before firing, each re-checks the target revision, the"},
-			{"", "sync status, auto-sync, and the window itself"},
+			{"", "operation. They run only while argx runs, are kept across"},
+			{"", "restarts, and each re-checks the target revision, the sync"},
+			{"", "status, auto-sync and the window before firing"},
 		}},
 		{"status letters", []row{
 			{"S / !", "Synced / OutOfSync"},
 			{"H P D M Z", "Healthy Progressing Degraded Missing Suspended"},
 		}},
+		{"keys.yaml", []row{
+			{"", keys.ConfigPath("argx")},
+			{"", "rebinds by action name: `quit: [x]`, or per context:"},
+			{"", "`tree.tree.logs: [L]` — the palette (:) shows the names"},
+		}},
 	}
-
-	var lines []string
-	for _, s := range sections {
+	for _, s := range notes {
 		lines = append(lines, m.st.accent.Render(s.title))
 		for _, r := range s.rows {
-			lines = append(lines, "  "+m.st.info.Render(padRight(r.k, 18))+m.st.dim.Render(r.d))
+			lines = append(lines, truncate("  "+m.st.info.Render(padRight(r.k, 18))+m.st.dim.Render(r.d), m.width))
 		}
 		lines = append(lines, "")
 	}

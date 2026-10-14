@@ -281,31 +281,30 @@ func (m *Model) currentContext() *contextRow {
 	return &m.ctxRows[m.ctxCur]
 }
 
-// handleContextsKey handles the context view.
-func (m *Model) handleContextsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+// handleContextsKey handles the context view and its detail panel.
+func (m *Model) handleContextsKey(action string) (tea.Model, tea.Cmd) {
 	if m.ctxDetail {
-		switch msg.String() {
-		case "j", "down":
+		switch action {
+		case aNavDown:
 			m.pagerTop++
-		case "k", "up":
+		case aNavUp:
 			m.pagerTop--
-		case "ctrl+d", "pgdown":
+		case aNavPgDown:
 			m.pagerTop += m.bodyHeight() / 2
-		case "ctrl+u", "pgup":
+		case aNavPgUp:
 			m.pagerTop -= m.bodyHeight() / 2
-		case "g", "home":
+		case aNavTop:
 			m.pagerTop = 0
-		case "G", "end":
-			// The panel scrolls like every other pager, so it ends like one
-			// too — G was the one motion missing here.
+		case aNavBottom:
+			// The panel scrolls like every other pager, so it ends like one too.
 			if max := len(m.contextDetailLines()) - m.bodyHeight(); max > 0 {
 				m.pagerTop = max
 			}
-		case "o":
+		case aCtxBrowser:
 			if r := m.currentContext(); r != nil {
 				return m, m.openBrowserCmd([]string{m.contextURL(r.name)})
 			}
-		case "enter", "esc", "h", "left":
+		case aCtxClose:
 			m.ctxDetail = false
 			m.pagerTop = 0
 		}
@@ -315,28 +314,32 @@ func (m *Model) handleContextsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	switch msg.String() {
-	case "j", "down":
+	switch action {
+	case aNavDown:
 		m.ctxCur++
-	case "k", "up":
+	case aNavUp:
 		m.ctxCur--
-	case "g", "home":
+	case aNavPgDown:
+		m.ctxCur += m.bodyHeight() / 2
+	case aNavPgUp:
+		m.ctxCur -= m.bodyHeight() / 2
+	case aNavTop:
 		m.ctxCur = 0
-	case "G", "end":
+	case aNavBottom:
 		m.ctxCur = len(m.ctxRows) - 1
-	case "enter", "l", "right":
+	case aCtxOpen:
 		if m.currentContext() != nil {
 			m.ctxDetail = true
 			m.pagerTop = 0
 		}
 		return m, nil
-	case "o":
+	case aCtxBrowser:
 		if r := m.currentContext(); r != nil {
 			return m, m.openBrowserCmd([]string{m.contextURL(r.name)})
 		}
-	case "r", "ctrl+r":
+	case aCtxReload:
 		return m, m.loadContextsCmd()
-	case "h", "left", "esc":
+	case aCtxLeave:
 		m.pop()
 		return m, nil
 	}
