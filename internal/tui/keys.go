@@ -232,7 +232,7 @@ func markBindings(ctx keys.Ctx) []keys.Binding {
 	return []keys.Binding{
 		{Action: aMarkToggle, Keys: []string{" "}, Ctx: ctx, Group: g, Help: "toggle this row and advance", Footer: 2, FooterGroup: "mark"},
 		{Action: aMarkAll, Keys: []string{"a"}, Ctx: ctx, Group: g, Help: "mark every visible row (never unmarks)", Footer: 2, FooterGroup: "mark"},
-		{Action: aMarkClear, Keys: []string{"A"}, Ctx: ctx, Group: g, Help: "clear the visible marks; again for those the filter hides", Footer: 2, FooterGroup: "mark"},
+		{Action: aMarkClear, Keys: []string{"A"}, LatinOnly: true, Ctx: ctx, Group: g, Help: "clear the visible marks; again for those the filter hides", Footer: 2, FooterGroup: "mark"},
 		{Action: aMarkInvert, Keys: []string{"i"}, Ctx: ctx, Group: g, Help: "invert the visible rows"},
 		{Action: aMarkAdd, Keys: []string{"+"}, Ctx: ctx, Group: g, Help: "add the visible rows, keeping what is marked"},
 		{Action: aMarkRange, Keys: []string{"v"}, Ctx: ctx, Group: g, Help: "range select — move, then v again", Short: "range",
@@ -258,6 +258,9 @@ func tabBindings(ctx keys.Ctx, footer int) []keys.Binding {
 // to press it and have Argo CD record a failed operation.
 var syncLabels = map[string]string{"blocked": "sync (w waits)"}
 
+// Uppercase-only actions (A, C, F, S, D, N, M, H) are LatinOnly: a Korean
+// input source cannot type them, and each stays reachable from the : palette,
+// which is typed into. TestLatinOnlyActionsAreInThePalette holds that line.
 func bindings() []keys.Binding {
 	var bs []keys.Binding
 	add := func(b ...keys.Binding) { bs = append(bs, b...) }
@@ -283,7 +286,7 @@ func bindings() []keys.Binding {
 			Help: "command palette — every action here, by name", Short: "commands", Footer: 16},
 		keys.Binding{Action: aSchedules, Keys: []string{"W"}, Ctx: ctxGlobal, Group: "general",
 			Help: "the scheduled syncs", Short: "scheduled", Footer: 1},
-		keys.Binding{Action: aContexts, Keys: []string{"C"}, Ctx: ctxGlobal, Group: "general",
+		keys.Binding{Action: aContexts, Keys: []string{"C"}, LatinOnly: true, Ctx: ctxGlobal, Group: "general",
 			Help: "the servers this session is on, and as whom", Short: "contexts", Footer: 11},
 	)
 
@@ -300,10 +303,10 @@ func bindings() []keys.Binding {
 		keys.Binding{Action: aAppsRefresh, Keys: []string{"r"}, Ctx: ctxApps, Group: g, Help: "refresh"},
 		keys.Binding{Action: aAppsHardRefresh, Keys: []string{"R"}, Ctx: ctxApps, Group: g, Help: "hard refresh"},
 		keys.Binding{Action: aAppsReload, Keys: []string{"ctrl+r"}, Ctx: ctxApps, Group: g, Help: "reload the list"},
-		keys.Binding{Action: aAppsFollow, Keys: []string{"F"}, Ctx: ctxApps, Group: g, Help: "follow — 15s auto-refresh",
+		keys.Binding{Action: aAppsFollow, Keys: []string{"F"}, LatinOnly: true, Ctx: ctxApps, Group: g, Help: "follow — 15s auto-refresh",
 			Labels: map[string]string{"on": "stop following"}},
 		keys.Binding{Action: aFleetErrors, Keys: []string{"E"}, Ctx: ctxApps, Group: g, Help: "why a server is unreachable"},
-		keys.Binding{Action: aAppSetsToggle, Keys: []string{"S"}, Ctx: ctxApps, Group: g, Help: "the application sets that generate them", Short: "appsets", Footer: 10},
+		keys.Binding{Action: aAppSetsToggle, Keys: []string{"S"}, LatinOnly: true, Ctx: ctxApps, Group: g, Help: "the application sets that generate them", Short: "appsets", Footer: 10},
 	)
 
 	// ---- application set list ----
@@ -315,7 +318,7 @@ func bindings() []keys.Binding {
 		keys.Binding{Action: aSetsBrowser, Keys: []string{"o"}, Ctx: ctxAppSets, Group: g, Help: "open in browser", Short: "browser", Footer: 3},
 		keys.Binding{Action: aSetsReload, Keys: []string{"r", "ctrl+r"}, Ctx: ctxAppSets, Group: g, Help: "reload"},
 		keys.Binding{Action: aFleetErrors, Keys: []string{"E"}, Ctx: ctxAppSets, Group: g, Help: "why a server is unreachable"},
-		keys.Binding{Action: aAppSetsToggle, Keys: []string{"S"}, Ctx: ctxAppSets, Group: g, Help: "back to the applications", Short: "applications", Footer: 4},
+		keys.Binding{Action: aAppSetsToggle, Keys: []string{"S"}, LatinOnly: true, Ctx: ctxAppSets, Group: g, Help: "back to the applications", Short: "applications", Footer: 4},
 	)
 
 	// ---- application view, every tab ----
@@ -341,7 +344,7 @@ func bindings() []keys.Binding {
 		// `l` is logs here, so → carries the "drill in" half of the pair alone.
 		keys.Binding{Action: aTreeManifest, Keys: []string{"enter", "right"}, Ctx: ctxTree, Group: g, Help: "live manifest", Short: "manifest", Footer: 5},
 		keys.Binding{Action: aTreeDiff, Keys: []string{"d"}, Ctx: ctxTree, Group: g, Help: "diff of the marked resources", Short: "diff", Footer: 7},
-		keys.Binding{Action: aTreeAppDiff, Keys: []string{"D"}, Ctx: ctxTree, Group: g, Help: "diff of the whole application", Short: "app diff", Footer: 8},
+		keys.Binding{Action: aTreeAppDiff, Keys: []string{"D"}, LatinOnly: true, Ctx: ctxTree, Group: g, Help: "diff of the whole application", Short: "app diff", Footer: 8},
 		keys.Binding{Action: aTreeLogs, Keys: []string{"l", "L"}, Ctx: ctxTree, Group: g, Help: "pod logs", Short: "logs", Footer: 9},
 		keys.Binding{Action: aTreeShell, Keys: []string{"e"}, Ctx: ctxTree, Group: g, Help: "a shell in the container, through Argo CD", Short: "shell", Footer: 10},
 		keys.Binding{Action: aTreeGraph, Keys: []string{"t"}, Ctx: ctxTree, Group: g, Help: "graph view, Argo CD UI style (list while filtered)", Short: "graph",
@@ -371,16 +374,16 @@ func bindings() []keys.Binding {
 	g = "manifests and diffs"
 	add(
 		keys.Binding{Action: aPagerNext, Keys: []string{"n"}, Ctx: ctxPager, Group: g, Help: "next match", Footer: 5, FooterGroup: "match"},
-		keys.Binding{Action: aPagerPrev, Keys: []string{"N"}, Ctx: ctxPager, Group: g, Help: "previous match", Footer: 5, FooterGroup: "match"},
-		keys.Binding{Action: aPagerNoise, Keys: []string{"M"}, Ctx: ctxPager, Group: g, Help: "show managedFields and other bookkeeping", Short: "noise", Footer: 6},
+		keys.Binding{Action: aPagerPrev, Keys: []string{"N"}, LatinOnly: true, Ctx: ctxPager, Group: g, Help: "previous match", Footer: 5, FooterGroup: "match"},
+		keys.Binding{Action: aPagerNoise, Keys: []string{"M"}, LatinOnly: true, Ctx: ctxPager, Group: g, Help: "show managedFields and other bookkeeping", Short: "noise", Footer: 6},
 		keys.Binding{Action: aPagerLeave, Keys: []string{"h", "left"}, Ctx: ctxPager, Group: g, Help: "back"},
 	)
 	g = "diffs"
 	add(
 		keys.Binding{Action: aDiffSxS, Keys: []string{"s"}, Ctx: ctxDiff, Group: g, Help: "side by side (needs 100 columns)", Short: "side-by-side",
 			Labels: map[string]string{"on": "unified"}, Footer: 2},
-		keys.Binding{Action: aDiffTool, Keys: []string{"D"}, Ctx: ctxDiff, Group: g, Help: "hand the two documents to your diff tool", Short: "diff tool", Footer: 3},
-		keys.Binding{Action: aDiffPairing, Keys: []string{"H"}, Ctx: ctxDiff, Group: g, Help: "pair resources whose names carry a content hash", Short: "hash pairing", Footer: 7},
+		keys.Binding{Action: aDiffTool, Keys: []string{"D"}, LatinOnly: true, Ctx: ctxDiff, Group: g, Help: "hand the two documents to your diff tool", Short: "diff tool", Footer: 3},
+		keys.Binding{Action: aDiffPairing, Keys: []string{"H"}, LatinOnly: true, Ctx: ctxDiff, Group: g, Help: "pair resources whose names carry a content hash", Short: "hash pairing", Footer: 7},
 	)
 
 	// ---- sync windows ----

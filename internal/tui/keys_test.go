@@ -3,7 +3,6 @@ package tui
 import (
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 
@@ -12,40 +11,28 @@ import (
 
 // One table, no key with two owners. F ("follow") was named in the footer and
 // help while the mark handler, which ran first, swallowed the key — this test
-// is what turns the next such collision into a CI failure.
-//
-// Unreachable (an uppercase letter a Korean input source cannot type) is
-// judged per action below rather than per key: G also answers to end, Y to y.
+// is what turns the next such collision into a CI failure. Reachability under
+// a Korean layout is judged per action by the kit (G also answers to end);
+// uppercase-only actions declare LatinOnly.
 func TestKeymapHasNoConflicts(t *testing.T) {
 	for _, c := range baseKeymap.Conflicts(allStacks()...) {
-		if c.Kind == keys.Unreachable {
-			continue
-		}
 		t.Error(c)
 	}
 }
 
-// Every action must be reachable under a Korean input source: by another key
-// of its own binding, or — for uppercase-only actions like S, C, F — from the
-// palette, which is opened with `:` and typed into, so it needs no uppercase.
-func TestEveryActionIsReachableUnderAKoreanLayout(t *testing.T) {
+// LatinOnly is a promise that the action has another way in: the palette,
+// opened with : and typed into, so it needs no uppercase. Modal keys are not
+// in the palette, so a modal binding must not be LatinOnly.
+func TestLatinOnlyActionsAreInThePalette(t *testing.T) {
 	paletteHas := map[string]bool{}
 	for _, st := range allStacks() {
 		for _, e := range baseKeymap.Entries(st, keys.Opts{}) {
 			paletteHas[e.Action] = true
 		}
 	}
-	if !keys.ReachableUnderCJK(baseKeymap.Bindings()[0].Keys[0]) {
-		t.Fatal("setup: quit must be typable")
-	}
 	for _, b := range baseKeymap.Bindings() {
-		if slices.ContainsFunc(b.Keys, keys.ReachableUnderCJK) {
-			continue
-		}
-		// The palette only lists screen actions; modal keys are not in it.
-		if !paletteHas[b.Action] {
-			t.Errorf("%s in %s: keys %v are all uppercase and the palette does not offer it",
-				b.Action, b.Ctx, b.Keys)
+		if b.LatinOnly && !paletteHas[b.Action] {
+			t.Errorf("%s in %s is LatinOnly but the palette does not offer it", b.Action, b.Ctx)
 		}
 	}
 }
