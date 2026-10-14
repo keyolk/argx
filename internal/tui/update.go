@@ -183,15 +183,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tickMsg:
-		if !m.autoRefresh {
+		if !m.autoRefresh || msg.gen != m.tickGen {
 			return m, nil // no redraw, no work: argx idles at 0 fps
 		}
 		if m.appsInFlight {
 			// The previous load has not answered yet; keep the cadence but do
 			// not pile a second request onto a slow fleet.
-			return m, tickCmd()
+			return m, tickCmd(m.tickGen)
 		}
-		return m, tea.Batch(m.loadAppsCmd(), tickCmd())
+		return m, tea.Batch(m.loadAppsCmd(), tickCmd(m.tickGen))
 
 	case contextsMsg:
 		m.loading = false

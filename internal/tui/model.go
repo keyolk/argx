@@ -301,6 +301,8 @@ type Model struct {
 	confirm     confirmState
 	syncOpts    syncOptState
 	autoRefresh bool
+	// tickGen identifies the live auto-refresh chain; see tickMsg.
+	tickGen uint64
 }
 
 // confirmState describes a pending yes/no prompt.

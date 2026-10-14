@@ -96,9 +96,12 @@ func (m *Model) handleAppsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// named it. One letter, two owners, is a key that does whichever thing
 		// the dispatch order happens to pick.
 		m.autoRefresh = !m.autoRefresh
+		// Every toggle retires the running chain, so turning it back on starts
+		// exactly one.
+		m.tickGen++
 		if m.autoRefresh {
 			m.setToast("auto-refresh on (15s)")
-			return m, tickCmd()
+			return m, tickCmd(m.tickGen)
 		}
 		m.setToast("auto-refresh off")
 	}

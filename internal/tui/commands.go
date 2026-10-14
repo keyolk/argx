@@ -67,7 +67,11 @@ type errMsg struct{ err error }
 // tickMsg drives the optional auto-refresh. It is a data tick, not a redraw
 // tick: Update only issues work when auto-refresh is on, so an idle argx
 // renders zero frames.
-type tickMsg time.Time
+//
+// gen ties a tick to the chain that scheduled it. Toggling F off and on within
+// one period would otherwise leave the old chain's pending tick alive (it sees
+// autoRefresh true again) beside the new chain, doubling the refresh rate.
+type tickMsg struct{ gen uint64 }
 
 func (m *Model) loadAppsCmd() tea.Cmd {
 	m.appsID++
@@ -395,8 +399,8 @@ func (m *Model) openBrowserCmd(urls []string) tea.Cmd {
 	}
 }
 
-func tickCmd() tea.Cmd {
-	return tea.Tick(15*time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
+func tickCmd(gen uint64) tea.Cmd {
+	return tea.Tick(15*time.Second, func(time.Time) tea.Msg { return tickMsg{gen: gen} })
 }
 
 // fleetErrorText renders per-server failures as one error body.

@@ -99,10 +99,27 @@ func TestTickDoesNotStackLoads(t *testing.T) {
 	m.loadAppsCmd()
 	id := m.appsID
 
-	if _, cmd := m.Update(tickMsg{}); cmd == nil {
+	if _, cmd := m.Update(tickMsg{gen: m.tickGen}); cmd == nil {
 		t.Fatal("the tick chain must continue")
 	}
 	if m.appsID != id {
 		t.Error("a tick started a second load while one was in flight")
+	}
+}
+
+// Toggling F off and on within one period must not leave two tick chains.
+func TestAutoRefreshToggleRetiresTheOldTickChain(t *testing.T) {
+	m := newTestModel(t, "alpha")
+	m.Update(key("F")) // on: chain 1 scheduled
+	first := m.tickGen
+	m.Update(key("F")) // off
+	m.Update(key("F")) // on: chain 2 scheduled
+
+	if _, cmd := m.Update(tickMsg{gen: first}); cmd != nil {
+		t.Error("the retired chain's tick should die, not reschedule")
+	}
+	id := m.appsID
+	if _, cmd := m.Update(tickMsg{gen: m.tickGen}); cmd == nil || m.appsID == id {
+		t.Error("the live chain's tick should load and reschedule")
 	}
 }
