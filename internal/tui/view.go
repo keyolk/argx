@@ -134,13 +134,40 @@ func (m *Model) renderTabBar() string {
 		// The number is always shown — it is the key that selects the tab, and
 		// an icon that replaced it would hide the binding.
 		label := fmt.Sprintf("%d %s%s", i+1, m.gl.prefix(m.gl.tabIcon(t)), t)
+		style := m.st.dim
 		if t == m.tab {
-			parts = append(parts, m.st.selected.Render(label))
-			continue
+			style = m.st.selected
 		}
-		parts = append(parts, m.st.dim.Render(label))
+		// The badge is styled on its own, after the label: what a tab holds is
+		// worth seeing before switching to it, and its color is the point.
+		parts = append(parts, style.Render(label)+m.tabBadge(t))
 	}
 	return strings.Join(parts, m.st.dim.Render(m.gl.tabSep))
+}
+
+// tabBadge is what a tab holds, shown on the tab itself so the reader knows
+// before switching: RESOURCES counts resources out of sync, HISTORY counts
+// deployments, DETAILS marks a degraded application. Empty when there is
+// nothing to say — a badge reading 0 is noise.
+func (m *Model) tabBadge(t tab) string {
+	if m.app == nil {
+		return ""
+	}
+	switch t {
+	case tabResources:
+		if n := m.app.OutOfSyncCount(); n > 0 {
+			return " " + m.st.warn.Render(fmt.Sprintf("%s%d", m.gl.outOfSync, n))
+		}
+	case tabHistory:
+		if n := len(m.app.Status.History); n > 0 {
+			return " " + m.st.dim.Render(fmt.Sprintf("%d", n))
+		}
+	case tabDetails:
+		if m.app.Status.Health.Status == "Degraded" {
+			return " " + m.st.err.Render(m.gl.no)
+		}
+	}
+	return ""
 }
 
 // renderAppTab dispatches to the active tab's renderer.
