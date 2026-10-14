@@ -23,13 +23,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showError(msg.err)
 			return m, nil
 		}
+		// Capture the cursor's key while appRows still indexes the old slice.
+		prev := m.currentAppKey()
 		m.apps = msg.apps
 		m.fleetErrs = msg.errs
 		// Completions are rebuilt from what actually arrived, so the prompt
 		// never offers a label key nothing carries.
 		m.completions = buildCompletions(msg.apps)
 		m.pruneAppMarks()
-		m.applyAppFilter()
+		m.applyAppFilterKeeping(prev)
 		// A server that failed is reported, but not as a modal that has to be
 		// dismissed on every refresh: the status line carries it, and the
 		// details are one keypress away. A modal here would make auto-refresh
@@ -49,10 +51,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showError(msg.err)
 			return m, nil
 		}
+		prev := m.currentNodeUID() // before treeRows stops matching m.tree
 		m.app = msg.app
 		m.tree = msg.rows
 		m.pruneTreeMarks()
-		m.applyTreeFilter()
+		m.applyTreeFilterKeeping(prev)
 		return m, nil
 
 	case pagerMsg:
