@@ -133,7 +133,7 @@ func TestCancelRefusesARunningSync(t *testing.T) {
 	if m.schedules[0].state != scheduleRunning {
 		t.Errorf("state = %v, want it left running", m.schedules[0].state)
 	}
-	if m.toast == "" {
+	if m.toast.text == "" {
 		t.Error("refusing to cancel should say so rather than doing nothing visible")
 	}
 }
@@ -200,8 +200,8 @@ func TestUnschedulableApplicationsAreReported(t *testing.T) {
 	m := newTestModel(t)
 	m.addSchedules(scheduledMsg{failed: []string{"web: cannot parse schedule"}})
 
-	if !strings.Contains(m.toast, "web") {
-		t.Errorf("toast = %q, want the application that could not be scheduled named", m.toast)
+	if !strings.Contains(m.toast.text, "web") {
+		t.Errorf("toast = %q, want the application that could not be scheduled named", m.toast.text)
 	}
 	if len(m.schedules) != 0 {
 		t.Error("nothing should have been scheduled")

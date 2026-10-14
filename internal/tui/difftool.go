@@ -118,13 +118,14 @@ func collectSides(items []argocd.ResourceDiff, want map[string]bool, appName str
 // It implements tea.ExecCommand for the same reason the shell does: a tool like
 // nvim -d or delta expects the terminal to itself, and rendering it inside the
 // TUI would mean writing a terminal emulator.
+//
+// It carries the two documents rather than file paths: the temp files are
+// written in Run, which Bubble Tea calls outside Update, so a slow or full disk
+// stalls the hand-off rather than the event loop.
 type diffToolRunner struct {
-	argv []string
-	dir  string
-	// files are removed when the tool exits. A tool that forks and returns
-	// immediately would lose them, which is why the config documents that the
-	// command must block.
-	files []string
+	// argv is the configured command before {live}/{desired} are substituted.
+	argv  []string
+	sides diffSides
 
 	stdin  io.Reader
 	stdout io.Writer
@@ -137,30 +138,53 @@ func (d *diffToolRunner) SetStdin(r io.Reader)  { d.stdin = r }
 func (d *diffToolRunner) SetStdout(w io.Writer) { d.stdout = w }
 func (d *diffToolRunner) SetStderr(w io.Writer) { d.stderr = w }
 
-// Run executes the tool and waits for it.
+// Run writes the two sides to files, executes the tool, waits for it, and
+// removes the files.
+//
+// The files are removed when the tool exits. A tool that forks and returns
+// immediately would lose them, which is why the config documents that the
+// command must block.
 func (d *diffToolRunner) Run() error {
-	defer func() {
-		for _, f := range d.files {
-			_ = os.Remove(f)
-		}
-		if d.dir != "" {
-			_ = os.Remove(d.dir)
-		}
-	}()
+	dir, err := os.MkdirTemp("", "argx-diff-")
+	if err != nil {
+		return fmt.Errorf("create a temp directory: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(dir) }()
 
-	cmd := exec.Command(d.argv[0], d.argv[1:]...)
+	// Named for what they are, not tmp1/tmp2: the tool puts these names in its
+	// own headers and window titles, and "live" beside "desired" is the whole
+	// orientation the reader needs.
+	base := sanitizeFileName(d.sides.name)
+	livePath := filepath.Join(dir, base+".live.yaml")
+	wantPath := filepath.Join(dir, base+".desired.yaml")
+
+	for path, content := range map[string]string{
+		livePath: d.sides.live,
+		wantPath: d.sides.desired,
+	} {
+		// 0600: a manifest can carry a Secret's data, and a world-readable
+		// copy in /tmp outlives nothing but is readable by everyone while it
+		// is there.
+		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+			return fmt.Errorf("write %s: %w", path, err)
+		}
+	}
+
+	full := expandDiffArgv(d.argv, livePath, wantPath)
+	cmd := exec.Command(full[0], full[1:]...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = d.stdin, d.stdout, d.stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%s: %w", d.argv[0], err)
+		return fmt.Errorf("%s: %w", full[0], err)
 	}
 	return nil
 }
 
-// diffToolCmd writes the two sides to files and runs the configured tool.
+// diffToolCmd hands the two sides to the configured tool. Nothing touches the
+// disk here; see diffToolRunner.
 func (m *Model) diffToolCmd() tea.Cmd {
 	argv := m.cfg.DiffToolCommand()
 	if len(argv) == 0 {
-		m.setToast("no diff tool configured — set diff_tool in " + config.FilePath())
+		m.setToastLevel(toastWarn, "no diff tool configured — set diff_tool in "+config.FilePath())
 		return nil
 	}
 	if m.pagerSides == nil {
@@ -168,39 +192,7 @@ func (m *Model) diffToolCmd() tea.Cmd {
 		return nil
 	}
 
-	dir, err := os.MkdirTemp("", "argx-diff-")
-	if err != nil {
-		m.showError(fmt.Errorf("create a temp directory: %w", err))
-		return nil
-	}
-
-	// Named for what they are, not tmp1/tmp2: the tool puts these names in its
-	// own headers and window titles, and "live" beside "desired" is the whole
-	// orientation the reader needs.
-	base := sanitizeFileName(m.pagerSides.name)
-	livePath := filepath.Join(dir, base+".live.yaml")
-	wantPath := filepath.Join(dir, base+".desired.yaml")
-
-	for path, content := range map[string]string{
-		livePath: m.pagerSides.live,
-		wantPath: m.pagerSides.desired,
-	} {
-		// 0600: a manifest can carry a Secret's data, and a world-readable
-		// copy in /tmp outlives nothing but is readable by everyone while it
-		// is there.
-		if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
-			_ = os.RemoveAll(dir)
-			m.showError(fmt.Errorf("write %s: %w", path, err))
-			return nil
-		}
-	}
-
-	full := expandDiffArgv(argv, livePath, wantPath)
-	runner := &diffToolRunner{
-		argv:  full,
-		dir:   dir,
-		files: []string{livePath, wantPath},
-	}
+	runner := &diffToolRunner{argv: argv, sides: *m.pagerSides}
 	return tea.Exec(runner, func(err error) tea.Msg {
 		if err != nil {
 			return actionMsg{err: err}

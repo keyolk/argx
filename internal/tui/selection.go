@@ -120,10 +120,26 @@ func (m *Model) currentHistory() *argocd.RevisionHistory {
 
 // applyAppFilter recomputes the visible application rows.
 func (m *Model) applyAppFilter() {
-	prev := ""
+	m.applyAppFilterKeeping(m.currentAppKey())
+}
+
+// currentAppKey is the key of the application under the cursor, or "".
+func (m *Model) currentAppKey() string {
 	if a := m.currentApp(); a != nil {
-		prev = a.Key()
+		return a.Key()
 	}
+	return ""
+}
+
+// applyAppFilterKeeping recomputes the visible rows and puts the cursor back on
+// the application whose key is prev.
+//
+// The key is a parameter rather than read here because a reload must capture it
+// before it replaces m.apps: appRows still holds indices into the previous
+// slice, and reading the cursor through them after the swap resolves to
+// whichever application now sits at that index — so an app added above the
+// cursor would move it onto a neighbour, and the next `s` would sync that one.
+func (m *Model) applyAppFilterKeeping(prev string) {
 	m.appRows = m.appRows[:0]
 	for i := range m.apps {
 		if !m.appFilter.match(&m.apps[i]) {
@@ -151,10 +167,20 @@ func (m *Model) applyAppFilter() {
 }
 
 func (m *Model) applyTreeFilter() {
-	prev := ""
+	m.applyTreeFilterKeeping(m.currentNodeUID())
+}
+
+// currentNodeUID is the UID of the resource under the cursor, or "".
+func (m *Model) currentNodeUID() string {
 	if n := m.currentNode(); n != nil {
-		prev = n.UID
+		return n.UID
 	}
+	return ""
+}
+
+// applyTreeFilterKeeping is applyAppFilterKeeping for the resource tree; the
+// same reload-ordering reason applies.
+func (m *Model) applyTreeFilterKeeping(prev string) {
 	m.treeRows = m.treeRows[:0]
 	for i := range m.tree {
 		if !m.treeFilt.match(m.tree[i].Node) {

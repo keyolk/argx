@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 // renderStatus is the one-line state readout above the footer: counts, marks,
@@ -230,10 +231,16 @@ func (m *Model) renderStatus() string {
 	if m.loading {
 		parts = append(parts, m.st.warn.Render("… "+m.loadWhat))
 	}
-	// The toast lives for a few seconds; it is checked here rather than cleared
-	// on a timer so no tick is needed just to expire it.
-	if m.toast != "" && time.Since(m.toastAt) < 5*time.Second {
-		parts = append(parts, m.st.success.Render(m.toast))
+	// The toast is cleared by its own timer (see Update), so View only draws it.
+	if m.toast.text != "" {
+		style := m.st.success
+		switch m.toast.level {
+		case toastWarn:
+			style = m.st.warn
+		case toastErr:
+			style = m.st.err
+		}
+		parts = append(parts, style.Render(m.toast.text))
 	}
 
 	// Each part carries its own style already; the separator is styled on its
@@ -547,7 +554,63 @@ func (m *Model) renderOverlay(frame string) string {
 			clampModalBody(lines, m.modalContentWidth(64), m.modalContentHeight()), "\n"))
 	}
 
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, box)
+	return m.spliceOverlay(frame, box)
+}
+
+// spliceOverlay centers box over a dimmed copy of frame.
+//
+// The frame is kept rather than replaced with blank space so the reader still
+// sees what the modal is about — which list, which rows are marked. It is
+// stripped and dimmed first: the box then stands out, and cutting plain text by
+// display cells is safe where cutting styled text would split an escape
+// sequence.
+func (m *Model) spliceOverlay(frame, box string) string {
+	bg := strings.Split(ansi.Strip(frame), "\n")
+	for len(bg) < m.height {
+		bg = append(bg, "")
+	}
+	if len(bg) > m.height {
+		bg = bg[:m.height]
+	}
+
+	boxLines := strings.Split(box, "\n")
+	boxW := lipgloss.Width(box)
+	top := (m.height - len(boxLines)) / 2
+	if top < 0 {
+		top = 0
+	}
+	left := (m.width - boxW) / 2
+	if left < 0 {
+		left = 0
+	}
+
+	out := make([]string, len(bg))
+	for r, line := range bg {
+		b := r - top
+		if b < 0 || b >= len(boxLines) {
+			out[r] = m.dimLine(line)
+			continue
+		}
+		// splitCells never cuts a wide character in half, so the head can come
+		// out a cell short and rest then starts that cell earlier. The skip is
+		// measured from where rest actually starts, or the tail would begin
+		// inside the box and push the line past the terminal width.
+		head, rest := splitCells(line, left)
+		_, tail := splitCells(rest, left+boxW-lipgloss.Width(head))
+		// A wide character straddling the box's right edge is dropped whole,
+		// leaving the line a cell short — harmless at the end of a line.
+		out[r] = m.dimLine(padRight(head, left)) + padRight(boxLines[b], boxW) + m.dimLine(tail)
+	}
+	return strings.Join(out, "\n")
+}
+
+// dimLine renders background text in the dim style; empty stays empty so no
+// stray escape sequences pad the frame.
+func (m *Model) dimLine(s string) string {
+	if s == "" {
+		return ""
+	}
+	return m.st.dim.Render(s)
 }
 
 // renderRevPicker draws the branch/tag chooser.

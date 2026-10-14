@@ -288,14 +288,20 @@ type Model struct {
 	reqID    uint64 // pager views: diff, manifest, logs, events
 	treeID   uint64
 	windowID uint64
+	appsID   uint64
+	// appsInFlight is true from issuing an application list request until its
+	// (current) response lands. The auto-refresh tick checks it so a slow fleet
+	// — the request timeout is longer than the tick — does not stack loads.
+	appsInFlight bool
 
 	// ---- transient feedback ----
-	toast       string
-	toastAt     time.Time
+	toast       toastState
 	errMsg      string
 	confirm     confirmState
 	syncOpts    syncOptState
 	autoRefresh bool
+	// tickGen identifies the live auto-refresh chain; see tickMsg.
+	tickGen uint64
 }
 
 // confirmState describes a pending yes/no prompt.
@@ -541,8 +547,37 @@ func (m *Model) pop() {
 	m.prev = m.prev[:len(m.prev)-1]
 }
 
-// setToast shows a transient message in the status line.
-func (m *Model) setToast(s string) {
-	m.toast = s
-	m.toastAt = time.Now()
+// toastLevel is how a toast is colored. A failure must not read as success.
+type toastLevel int
+
+const (
+	toastInfo toastLevel = iota
+	toastWarn
+	toastErr
+)
+
+// toastTTL is how long a toast stays in the status line.
+const toastTTL = 5 * time.Second
+
+// toastState is the one transient status-line message.
+//
+// seq identifies the toast so its expiry timer clears only that toast: a newer
+// toast set before the older one's timer fires must survive it.
+type toastState struct {
+	text  string
+	level toastLevel
+	seq   uint64
+}
+
+// toastExpireMsg clears the toast stamped seq, if it is still the one shown.
+type toastExpireMsg struct{ seq uint64 }
+
+// setToast shows a transient informational message in the status line.
+func (m *Model) setToast(s string) { m.setToastLevel(toastInfo, s) }
+
+// setToastErr shows a transient failure, in the error color.
+func (m *Model) setToastErr(s string) { m.setToastLevel(toastErr, s) }
+
+func (m *Model) setToastLevel(level toastLevel, s string) {
+	m.toast = toastState{text: s, level: level, seq: m.toast.seq + 1}
 }

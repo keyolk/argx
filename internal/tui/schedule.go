@@ -269,9 +269,9 @@ func (m *Model) addSchedules(msg scheduledMsg) tea.Cmd {
 
 	switch {
 	case len(msg.items) == 0 && len(msg.failed) > 0:
-		m.setToast(fmt.Sprintf("could not schedule: %s", msg.failed[0]))
+		m.setToastErr(fmt.Sprintf("could not schedule: %s", msg.failed[0]))
 	case len(msg.failed) > 0:
-		m.setToast(fmt.Sprintf("scheduled %d, could not schedule %d (%s)",
+		m.setToastLevel(toastWarn, fmt.Sprintf("scheduled %d, could not schedule %d (%s)",
 			len(msg.items), len(msg.failed), msg.failed[0]))
 	case len(msg.items) > 0:
 		m.setToast(fmt.Sprintf("scheduled %d sync(s) — W to review", len(msg.items)))

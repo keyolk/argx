@@ -9,8 +9,31 @@ import (
 
 // Update dispatches by message type. No I/O happens here — every side effect
 // returns a tea.Cmd.
+//
+// It also arms the expiry of any toast the message set. Doing that here rather
+// than in setToast keeps the dozens of call sites unchanged, and expiring on a
+// timer (rather than View comparing against time.Since) is what makes the toast
+// actually disappear while argx is idle and nothing else triggers a frame.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	before := m.toast.seq
+	model, cmd := m.update(msg)
+	if m.toast.seq != before && m.toast.text != "" {
+		seq := m.toast.seq
+		cmd = tea.Batch(cmd, tea.Tick(toastTTL, func(time.Time) tea.Msg {
+			return toastExpireMsg{seq: seq}
+		}))
+	}
+	return model, cmd
+}
+
+func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case toastExpireMsg:
+		if msg.seq == m.toast.seq {
+			m.toast.text = ""
+		}
+		return m, nil
+
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
 		m.tooSmall = msg.Width < minWidth || msg.Height < minHeight
@@ -18,18 +41,26 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case appsMsg:
+		if msg.id != m.appsID {
+			// Superseded by a newer request. Dropping it also keeps the
+			// loading indicator up until the request that matters answers.
+			return m, nil
+		}
+		m.appsInFlight = false
 		m.loading = false
 		if msg.err != nil {
 			m.showError(msg.err)
 			return m, nil
 		}
+		// Capture the cursor's key while appRows still indexes the old slice.
+		prev := m.currentAppKey()
 		m.apps = msg.apps
 		m.fleetErrs = msg.errs
 		// Completions are rebuilt from what actually arrived, so the prompt
 		// never offers a label key nothing carries.
 		m.completions = buildCompletions(msg.apps)
 		m.pruneAppMarks()
-		m.applyAppFilter()
+		m.applyAppFilterKeeping(prev)
 		// A server that failed is reported, but not as a modal that has to be
 		// dismissed on every refresh: the status line carries it, and the
 		// details are one keypress away. A modal here would make auto-refresh
@@ -49,10 +80,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.showError(msg.err)
 			return m, nil
 		}
+		prev := m.currentNodeUID() // before treeRows stops matching m.tree
 		m.app = msg.app
 		m.tree = msg.rows
 		m.pruneTreeMarks()
-		m.applyTreeFilter()
+		m.applyTreeFilterKeeping(prev)
 		return m, nil
 
 	case pagerMsg:
@@ -174,10 +206,15 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tickMsg:
-		if !m.autoRefresh {
+		if !m.autoRefresh || msg.gen != m.tickGen {
 			return m, nil // no redraw, no work: argx idles at 0 fps
 		}
-		return m, tea.Batch(m.loadAppsCmd(), tickCmd())
+		if m.appsInFlight {
+			// The previous load has not answered yet; keep the cadence but do
+			// not pile a second request onto a slow fleet.
+			return m, tickCmd(m.tickGen)
+		}
+		return m, tea.Batch(m.loadAppsCmd(), tickCmd(m.tickGen))
 
 	case contextsMsg:
 		m.loading = false
@@ -203,12 +240,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if err := m.applyScheduleResult(msg); err != nil {
 			// The row was cleared while its sync was in flight. The sync still
 			// happened, so saying nothing would be the wrong kind of quiet.
-			m.setToast("a cleared scheduled sync finished: " + msg.state.String())
+			text := "a cleared scheduled sync finished: " + msg.state.String()
+			if msg.state == scheduleFailed {
+				m.setToastErr(text)
+			} else {
+				m.setToast(text)
+			}
 			return m, nil
 		}
 		m.clampScheduleCursor()
 		if msg.state == scheduleFailed {
-			m.setToast("scheduled sync failed: " + msg.reason)
+			m.setToastErr("scheduled sync failed: " + msg.reason)
 		}
 		return m, nil
 

@@ -78,11 +78,16 @@ func key(s string) tea.KeyMsg {
 	return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 }
 
+// press sends keys in order and returns the last key's command.
+//
+// It returns the handler's own command, without the toast-expiry timer Update
+// adds whenever a key sets a toast: tests use it to ask "did this key issue
+// work", and the timer is not work.
 func press(t *testing.T, m *Model, keys ...string) tea.Cmd {
 	t.Helper()
 	var cmd tea.Cmd
 	for _, k := range keys {
-		_, cmd = m.Update(key(k))
+		_, cmd = m.update(key(k))
 	}
 	return cmd
 }

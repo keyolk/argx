@@ -19,6 +19,10 @@ import (
 // Update and View never touch I/O.
 
 type appsMsg struct {
+	// id is the request stamp (Model.appsID). A tick, ctrl+r and the reload
+	// after a sync can all be in flight at once; only the newest may land, or
+	// a slow older answer would overwrite a fresher list.
+	id   uint64
 	apps []argocd.Application
 	// errs are per-server failures. A fleet list does not fail as a whole when
 	// one server is down: the others still have answers, and hiding them
@@ -63,9 +67,16 @@ type errMsg struct{ err error }
 // tickMsg drives the optional auto-refresh. It is a data tick, not a redraw
 // tick: Update only issues work when auto-refresh is on, so an idle argx
 // renders zero frames.
-type tickMsg time.Time
+//
+// gen ties a tick to the chain that scheduled it. Toggling F off and on within
+// one period would otherwise leave the old chain's pending tick alive (it sees
+// autoRefresh true again) beside the new chain, doubling the refresh rate.
+type tickMsg struct{ gen uint64 }
 
 func (m *Model) loadAppsCmd() tea.Cmd {
+	m.appsID++
+	id := m.appsID
+	m.appsInFlight = true
 	m.loading, m.loadWhat = true, "applications"
 	fleet := m.fleet
 	ctx := m.ctx
@@ -75,7 +86,7 @@ func (m *Model) loadAppsCmd() tea.Cmd {
 		// The fleet queries every server concurrently and returns whatever
 		// answered, already sorted and stamped with its origin.
 		apps, errs := fleet.ListApplications(c, nil)
-		return appsMsg{apps: apps, errs: errs}
+		return appsMsg{id: id, apps: apps, errs: errs}
 	}
 }
 
@@ -388,8 +399,8 @@ func (m *Model) openBrowserCmd(urls []string) tea.Cmd {
 	}
 }
 
-func tickCmd() tea.Cmd {
-	return tea.Tick(15*time.Second, func(t time.Time) tea.Msg { return tickMsg(t) })
+func tickCmd(gen uint64) tea.Cmd {
+	return tea.Tick(15*time.Second, func(time.Time) tea.Msg { return tickMsg{gen: gen} })
 }
 
 // fleetErrorText renders per-server failures as one error body.
