@@ -141,8 +141,8 @@ func TestInitContainersAreListedButNotExecutable(t *testing.T) {
 	if cmd != nil {
 		t.Error("exec into a finished init container should not be attempted")
 	}
-	if !strings.Contains(m2.toast.text, "init container") {
-		t.Errorf("the reason should be given: toast = %q", m2.toast.text)
+	if !strings.Contains(m2.toastText(), "init container") {
+		t.Errorf("the reason should be given: toast = %q", m2.toastText())
 	}
 }
 
@@ -163,8 +163,8 @@ func TestNonPodsAreRejectedEarly(t *testing.T) {
 			t.Errorf("%q on a Service opened %v", k, m.overlay)
 			m.overlay = overlayNone
 		}
-		if !strings.Contains(m.toast.text, "only available for pods") {
-			t.Errorf("%q should say why: toast = %q", k, m.toast.text)
+		if !strings.Contains(m.toastText(), "only available for pods") {
+			t.Errorf("%q should say why: toast = %q", k, m.toastText())
 		}
 	}
 }

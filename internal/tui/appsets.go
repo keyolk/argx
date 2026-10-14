@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/keyolk/argx/internal/argocd"
+	"github.com/keyolk/tuikit/render"
 )
 
 // The ApplicationSet list answers a question the application list cannot: what
@@ -139,13 +140,13 @@ func (m *Model) renderAppSets() string {
 	nameW, ctxW, genW, projW := m.setColumns()
 
 	lines := make([]string, 0, h)
-	head := padRight("   NAME", 3+nameW)
+	head := render.PadRight("   NAME", 3+nameW)
 	if ctxW > 0 {
-		head += " " + padRight("CONTEXT", ctxW)
+		head += " " + render.PadRight("CONTEXT", ctxW)
 	}
-	head += " " + padRight("GENERATORS", genW)
+	head += " " + render.PadRight("GENERATORS", genW)
 	if projW > 0 {
-		head += " " + padRight("PROJECT", projW)
+		head += " " + render.PadRight("PROJECT", projW)
 	}
 	head += " APPS"
 	lines = append(lines, m.st.header.Render(truncate(head, m.width)))
@@ -174,16 +175,16 @@ func (m *Model) renderAppSets() string {
 		}
 
 		line := cursor + state + " " +
-			nameStyle.Render(padRight(truncate(s.Name(), nameW), nameW))
+			nameStyle.Render(render.PadRight(truncate(s.Name(), nameW), nameW))
 		if ctxW > 0 {
 			label := m.gl.prefix(m.gl.server) + s.Context
-			line += " " + m.ctxStyle(s.Context).Render(padRight(truncate(label, ctxW), ctxW))
+			line += " " + m.ctxStyle(s.Context).Render(render.PadRight(truncate(label, ctxW), ctxW))
 		}
-		line += " " + m.st.info.Render(padRight(
+		line += " " + m.st.info.Render(render.PadRight(
 			truncate(strings.Join(s.GeneratorKinds(), ","), genW), genW))
 		if projW > 0 {
 			proj := m.gl.prefix(m.gl.project) + s.Project()
-			line += " " + m.st.dim.Render(padRight(truncate(proj, projW), projW))
+			line += " " + m.st.dim.Render(render.PadRight(truncate(proj, projW), projW))
 		}
 		line += " " + m.st.dim.Render(fmt.Sprint(len(s.Status.ApplicationStatus)))
 		lines = append(lines, truncate(line, m.width))
@@ -254,35 +255,35 @@ func (m *Model) clampSetScroll() {
 }
 
 // handleAppSetsKey drives the ApplicationSet list.
-func (m *Model) handleAppSetsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "j", "down":
+func (m *Model) handleAppSetsKey(action string) (tea.Model, tea.Cmd) {
+	switch action {
+	case aNavDown:
 		m.appsetCur++
-	case "k", "up":
+	case aNavUp:
 		m.appsetCur--
-	case "ctrl+d", "pgdown":
+	case aNavPgDown:
 		m.appsetCur += m.bodyHeight() / 2
-	case "ctrl+u", "pgup":
+	case aNavPgUp:
 		m.appsetCur -= m.bodyHeight() / 2
-	case "g", "home":
+	case aNavTop:
 		m.appsetCur, m.appsetTop = 0, 0
-	case "G", "end":
+	case aNavBottom:
 		m.appsetCur = len(m.appsetRows) - 1
 
-	case "enter", "l", "right":
+	case aSetsOpen:
 		// Drilling in means seeing the applications this set generated, which
 		// is the application list with a filter it could not have expressed:
 		// membership is recorded on the applications, not derivable from a name.
 		if s := m.currentSet(); s != nil {
 			return m.showGeneratedApps(s)
 		}
-	case "y":
+	case aSetsSpec:
 		if s := m.currentSet(); s != nil {
 			m.push(screenManifest)
 			m.pager, m.pagerTitle = nil, "spec · "+s.Name()
 			return m, m.loadSetSpecCmd(*s)
 		}
-	case "o":
+	case aSetsBrowser:
 		if s := m.currentSet(); s != nil {
 			u, err := m.fleet.SetURL(s)
 			if err != nil {
@@ -291,9 +292,9 @@ func (m *Model) handleAppSetsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			}
 			return m, m.openBrowserCmd([]string{u})
 		}
-	case "r", "ctrl+r":
+	case aSetsReload:
 		return m, m.loadAppSetsCmd()
-	case "E":
+	case aFleetErrors:
 		if len(m.fleetErrs) > 0 {
 			m.showError(fleetErrorText(m.fleetErrs))
 		}

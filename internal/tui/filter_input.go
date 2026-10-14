@@ -13,55 +13,46 @@ import (
 	"github.com/keyolk/argx/internal/argocd"
 )
 
-func (m *Model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleFilterKey(action string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	// The resource filter is a parsed struct rather than a plain string, so it
 	// is edited through its raw text and re-parsed on every keystroke.
-
+	//
 	// The arrows split by axis, which is the only division that lets one
 	// gesture do both jobs: left and right move the text cursor inside the
 	// query, up and down move the cursor through the rows the query matched.
-	// Typing to narrow and then arrowing to the row you wanted is the whole
-	// point of an incremental filter, and fixing a typo mid-query should not
-	// mean deleting back to it.
-	switch msg.String() {
-	case "up", "down", "pgup", "pgdown", "ctrl+n", "ctrl+p":
-		return m.moveWhileFiltering(msg)
-	}
-	// Marking, without leaving the prompt. Filtering and selecting are the same
-	// activity — narrow, take those rows, narrow again, take those — and having
-	// to close the prompt in between means retyping the query to carry on.
-	//
-	// This takes → and ← away from the text cursor on the two lists that mark.
-	// It is a real cost, and the smaller one: ctrl+b / ctrl+f still move a
-	// character and alt+b / alt+f a word, which is the readline spelling anyone
-	// editing a line already has in their fingers, whereas marking had no
-	// unmodified keys left at all.
-	if m.marksInFilter(msg) {
-		return m.markWhileFiltering(msg)
-	}
-	switch msg.String() {
-	case "tab", "shift+tab":
-		// Tab completes the word under the cursor. On the application list
-		// only: the resource filter's fields are a fixed handful documented in
-		// the prompt hint, and there is nothing data-driven to offer.
-		if m.screen == screenApps {
-			return m.completeFilter()
+	switch action {
+	case aTabNext, aTabPrev:
+		// Tab keys are not filter text. Without this a `]` typed while the
+		// prompt is open lands in the query instead of switching tabs, and the
+		// reader is stuck on a tab with no way out but Esc.
+		m.filtering = false
+		d := 1
+		if action == aTabPrev {
+			d = -1
 		}
+		return m, m.cycleTab(d)
+	case aFilterDown, aFilterUp, aFilterPgDown, aFilterPgUp:
+		return m.moveWhileFiltering(action)
+	case aFilterMark, aFilterUnmark, aFilterExtendDown, aFilterExtendUp:
+		// Marking, without leaving the prompt: narrow, take those rows, narrow
+		// again. ctrl+b / ctrl+f still move a character here and alt+b / alt+f
+		// a word — the readline spelling anyone editing a line already knows.
+		return m.markWhileFiltering(action)
+	case aFilterComplete:
+		// On the application list only: the resource filter's fields are a
+		// fixed handful documented in the prompt hint.
+		return m.completeFilter()
 	}
 
-	// Enter closes the prompt and keeps the query, so the list keeps its
-	// filter and the full keymap comes back.
 	target := m.filterTarget()
 	r := []rune(*target)
 	m.clampFilterCursor(len(r))
 
-	switch msg.String() {
-	case "esc":
+	switch action {
+	case aFilterCancel:
 		// A range opened from inside the prompt is the innermost level, exactly
 		// as it is outside one — so Esc abandons the range and leaves both the
-		// prompt and the query alone. Without this the range survived an Esc
-		// that erased the query it was being made under, which is the worst of
-		// both: a selection still armed over rows the reader can no longer see.
+		// prompt and the query alone.
 		if m.visualFrom >= 0 {
 			m.visualFrom = -1
 			m.setToast("range cancelled")
@@ -69,47 +60,50 @@ func (m *Model) handleFilterKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		r = nil
 		m.filtering = false
-	case "enter":
+	case aFilterKeep:
+		// Enter closes the prompt and keeps the query, so the list keeps its
+		// filter and the full keymap comes back.
 		m.filtering = false
 
-	case "left", "ctrl+b":
+	case aFilterLeft:
 		if m.filterCur > 0 {
 			m.filterCur--
 		}
-	case "right", "ctrl+f":
+	case aFilterRight:
 		if m.filterCur < len(r) {
 			m.filterCur++
 		}
-	case "home", "ctrl+a":
+	case aFilterHome:
 		m.filterCur = 0
-	case "end", "ctrl+e":
+	case aFilterEnd:
 		m.filterCur = len(r)
-	case "alt+left", "alt+b":
+	case aFilterWordLeft:
 		m.filterCur = wordLeft(r, m.filterCur)
-	case "alt+right", "alt+f":
+	case aFilterWordRight:
 		m.filterCur = wordRight(r, m.filterCur)
 
-	case "backspace":
+	case aFilterBackspace:
 		if m.filterCur > 0 {
 			r = append(r[:m.filterCur-1], r[m.filterCur:]...)
 			m.filterCur--
 		}
-	case "delete", "ctrl+d":
+	case aFilterDelete:
 		if m.filterCur < len(r) {
 			r = append(r[:m.filterCur], r[m.filterCur+1:]...)
 		}
-	case "ctrl+u":
+	case aFilterClear:
 		// Clear the query but stay in the prompt: retyping from scratch is the
 		// common case after a search that found nothing.
 		r, m.filterCur = nil, 0
-	case "ctrl+k":
+	case aFilterKillEnd:
 		r = r[:m.filterCur]
-	case "ctrl+w":
+	case aFilterKillWord:
 		start := wordLeft(r, m.filterCur)
 		r = append(r[:start], r[m.filterCur:]...)
 		m.filterCur = start
 
-	default:
+	case "":
+		// An unbound key is query text.
 		if len(msg.Runes) > 0 {
 			// Insert at the cursor, not at the end: the whole reason for a
 			// movable cursor is to edit what is already typed.
@@ -272,17 +266,17 @@ func (m *Model) reapplyFilter() {
 //
 // Only the arrow keys and the control-key pairs are routed here: j and k are
 // letters, and a filter that could not contain them would be useless.
-func (m *Model) moveWhileFiltering(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) moveWhileFiltering(action string) (tea.Model, tea.Cmd) {
 	half := m.bodyHeight() / 2
 	step := 0
-	switch msg.String() {
-	case "down", "ctrl+n":
+	switch action {
+	case aFilterDown:
 		step = 1
-	case "up", "ctrl+p":
+	case aFilterUp:
 		step = -1
-	case "pgdown":
+	case aFilterPgDown:
 		step = half
-	case "pgup":
+	case aFilterPgUp:
 		step = -half
 	}
 
@@ -327,7 +321,7 @@ func (m *Model) runConfirm() tea.Cmd {
 	return action()
 }
 
-func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleOverlayKey(action string, msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.overlay {
 	case overlayError:
 		// Any key dismisses an error; requiring a specific one just traps
@@ -337,8 +331,8 @@ func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case overlayConfirm:
-		switch msg.String() {
-		case "h", "left", "l", "right":
+		switch action {
+		case aConfirmToggle:
 			// A cursor, so the answer can be given by moving to it and pressing
 			// enter — the same two keys that work everywhere else in argx.
 			// Without this the modal was reachable only by knowing y and n,
@@ -346,12 +340,9 @@ func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			// to be told.
 			m.confirm.yes = !m.confirm.yes
 			return m, nil
-		case "tab":
-			m.confirm.yes = !m.confirm.yes
-			return m, nil
-		case "y", "Y":
+		case aConfirmYes:
 			return m, m.runConfirm()
-		case "enter":
+		case aConfirmEnter:
 			// enter takes whichever side the cursor is on, which is No until
 			// the reader moves it. An enter reflex on a modal that just
 			// appeared must not sync a cluster.
@@ -361,30 +352,33 @@ func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 			return m, m.runConfirm()
-		case "n", "N", "esc":
+		case aConfirmNo:
 			m.overlay = overlayNone
 			m.confirm = confirmState{}
 		}
 		return m, nil
 
 	case overlayRevPicker:
-		return m.handleRevPickerKey(msg)
+		return m.handleRevPickerKey(action, msg)
 
 	case overlayContainer:
-		return m.handleContainerKey(msg)
+		return m.handleContainerKey(action, msg)
+
+	case overlayPalette:
+		return m.handlePaletteKey(action, msg)
 
 	case overlaySyncOpts:
 		toggles := m.syncOptToggles()
-		switch msg.String() {
-		case "j", "down":
+		switch action {
+		case aOptDown:
 			m.syncOpts.cur++
-		case "k", "up":
+		case aOptUp:
 			m.syncOpts.cur--
-		case "g", "home":
+		case aOptTop:
 			m.syncOpts.cur = 0
-		case "G", "end":
+		case aOptBottom:
 			m.syncOpts.cur = len(toggles) - 1
-		case " ", "h", "left", "l", "right":
+		case aOptToggle:
 			// Space flips the row under the cursor, and h/l flip it too: this
 			// is a row of checkboxes, so left and right are what a reader
 			// coming from any other list reaches for, and there is no
@@ -392,15 +386,15 @@ func (m *Model) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if m.syncOpts.cur >= 0 && m.syncOpts.cur < len(toggles) {
 				*toggles[m.syncOpts.cur] = !*toggles[m.syncOpts.cur]
 			}
-		case "p":
+		case aOptPrune:
 			m.syncOpts.prune = !m.syncOpts.prune
-		case "d":
+		case aOptDryRun:
 			m.syncOpts.dryRun = !m.syncOpts.dryRun
-		case "w":
+		case aOptWait:
 			m.syncOpts.schedule = !m.syncOpts.schedule
-		case "esc", "n":
+		case aOptCancel:
 			m.overlay = overlayNone
-		case "enter", "y":
+		case aOptContinue:
 			m.overlay = overlayNone
 			return m, m.armSyncConfirm()
 		}
@@ -491,11 +485,11 @@ func (m *Model) armSyncConfirm() tea.Cmd {
 	if m.syncOpts.schedule {
 		// A scheduled sync is confirmed like any other, because it still syncs
 		// a cluster — just later. What differs is that the reader is told the
-		// waiting is bounded by the process: argx holds these in memory and
-		// nothing fires once it exits.
+		// waiting is bounded by the process: the schedules are saved, but
+		// nothing fires while argx is closed.
 		body = append(body, "",
 			m.st.warn.Render("Each sync waits for its window to open."),
-			m.st.dim.Render("Only while argx is running — quitting drops them."))
+			m.st.dim.Render("Only while argx is running — they are kept across restarts."))
 		m.confirm = confirmState{
 			title:  "Schedule sync?",
 			body:   body,

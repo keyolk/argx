@@ -37,6 +37,14 @@ type Application struct {
 		Conditions     []Condition       `json:"conditions"`
 		ReconciledAt   time.Time         `json:"reconciledAt"`
 		History        []RevisionHistory `json:"history"`
+		// Resources is each managed resource's sync status, which the
+		// resource tree does not carry. Only the status is modeled: it is
+		// what the RESOURCES tab badge counts.
+		Resources []struct {
+			Kind   string `json:"kind"`
+			Name   string `json:"name"`
+			Status string `json:"status"`
+		} `json:"resources"`
 	} `json:"status"`
 }
 
@@ -532,4 +540,15 @@ type Event struct {
 	} `json:"involvedObject"`
 	FirstTimestamp time.Time `json:"firstTimestamp"`
 	LastTimestamp  time.Time `json:"lastTimestamp"`
+}
+
+// OutOfSyncCount is how many managed resources are not in sync.
+func (a *Application) OutOfSyncCount() int {
+	n := 0
+	for _, r := range a.Status.Resources {
+		if r.Status == "OutOfSync" {
+			n++
+		}
+	}
+	return n
 }

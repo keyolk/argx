@@ -5,34 +5,41 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/keyolk/tuikit/keys"
+	"github.com/keyolk/tuikit/prefs"
+	"github.com/keyolk/tuikit/toast"
 )
 
 // Update dispatches by message type. No I/O happens here — every side effect
 // returns a tea.Cmd.
 //
-// It also arms the expiry of any toast the message set. Doing that here rather
-// than in setToast keeps the dozens of call sites unchanged, and expiring on a
-// timer (rather than View comparing against time.Since) is what makes the toast
-// actually disappear while argx is idle and nothing else triggers a frame.
+// It also returns the expiry ticks of any toasts the message queued. Doing that
+// here rather than at each setToast keeps the dozens of call sites unchanged,
+// and expiring on a timer (rather than View comparing against time.Since) is
+// what makes a toast disappear while argx is idle.
 func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	before := m.toast.seq
 	model, cmd := m.update(msg)
-	if m.toast.seq != before && m.toast.text != "" {
-		seq := m.toast.seq
-		cmd = tea.Batch(cmd, tea.Tick(toastTTL, func(time.Time) tea.Msg {
-			return toastExpireMsg{seq: seq}
-		}))
+	// Persist after the handler, whatever it changed: one place, so no handler
+	// can forget. Debounced, so holding j does not write per keypress.
+	if save := m.persistUI(); save != nil {
+		cmd = tea.Batch(cmd, save)
+	}
+	if len(m.toastCmds) > 0 {
+		cmd = tea.Batch(append([]tea.Cmd{cmd}, m.toastCmds...)...)
+		m.toastCmds = nil
 	}
 	return model, cmd
 }
 
 func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case toastExpireMsg:
-		if msg.seq == m.toast.seq {
-			m.toast.text = ""
-		}
+	case toast.Expired:
+		m.toasts = toast.Update(m.toasts, msg)
 		return m, nil
+
+	case prefs.SaveTick, prefs.Saved:
+		cmd, _ := m.handlePrefsMsg(msg)
+		return m, cmd
 
 	case tea.WindowSizeMsg:
 		m.width, m.height = msg.Width, msg.Height
@@ -261,7 +268,7 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// and a program you cannot interrupt is one people kill from another
 		// window.
 		if msg.Type == tea.KeyCtrlC {
-			return m, tea.Quit
+			return m, m.quitCmd()
 		}
 		return m.handleKey(msg)
 	}
@@ -269,60 +276,57 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// A key the reader pressed after an error was on screen is the reader
+	// having seen it. Cleared before the handler runs, so the handler's own
+	// toast survives.
+	m.toasts = toast.OnKey(m.toasts)
 	// Under a Korean input source the shortcut keys arrive as jamo (`q` -> `ㅂ`)
 	// and do nothing until the input source is switched back. Rewrite them to
 	// the Latin key at the same physical position -- but not while the filter
-	// prompt owns keys, where the jamo IS the query.
+	// prompt or the palette owns keys, where the jamo IS the query.
 	//
-	// The overlays below are all shortcuts (y/n, j/k, space), so they normalize.
-	if !m.filtering {
-		msg = normalizeCJKKey(msg)
+	// The other overlays are all shortcuts (y/n, j/k, space), so they normalize.
+	if !m.filtering && m.overlay != overlayPalette {
+		msg = keys.NormalizeCJK(msg)
+	}
+	b, ok := m.keymap().ResolveRaw(m.keyStack(), msg, m.keyOpts())
+	action := ""
+	if ok {
+		action = b.Action
 	}
 
 	// Overlays capture keys first: a modal that can be dismissed by keys that
 	// also act on the screen behind it is how people sync the wrong thing.
 	if m.overlay != overlayNone {
-		return m.handleOverlayKey(msg)
+		return m.handleOverlayKey(action, msg)
 	}
 	if m.filtering {
-		// Tab keys are not filter text. Without this a `]` typed while the
-		// filter prompt is open lands in the query instead of switching tabs,
-		// and the reader is stuck on a tab with no way out but Esc.
-		switch msg.String() {
-		case "]", "[", "tab", "shift+tab":
-			if m.screen == screenApp {
-				m.filtering = false
-				d := 1
-				if msg.String() == "[" || msg.String() == "shift+tab" {
-					d = -1
-				}
-				return m, m.cycleTab(d)
-			}
-		}
-		return m.handleFilterKey(msg)
+		return m.handleFilterKey(action, msg)
 	}
+	if !ok {
+		return m, nil
+	}
+	return m.runAction(action)
+}
 
-	switch msg.String() {
-	case "q":
-		// Quit outright, from wherever the reader is. q meaning "back" on some
-		// screens and "quit" on one made the same key do two things depending
-		// on where you were, which is the kind of thing you find out by
-		// pressing it. Esc is the key that unwinds a screen.
+// runAction runs a screen-level action: from a key, or from the palette.
+func (m *Model) runAction(action string) (tea.Model, tea.Cmd) {
+	switch action {
+	case aQuit:
+		// Quit outright, from wherever the reader is. Esc is the key that
+		// unwinds a screen; q meaning "back" on some screens and "quit" on one
+		// made the same key do two things depending on where you were.
 		//
-		// Reached only when no overlay is open and the filter prompt is closed,
-		// since q is an ordinary letter and a search that cannot contain it
-		// would be broken.
-		//
-		// The one thing that stops it is pending scheduled syncs: they exist
-		// only in this process, so quitting silently cancels work the reader
-		// asked for and would have no way of noticing. Ctrl+C still quits
-		// immediately — an interrupt that asks a question is not an interrupt.
+		// The one thing that stops it is pending scheduled syncs: they run only
+		// in this process, so quitting silently stops work the reader asked for.
+		// Ctrl+C still quits immediately (see update) — an interrupt that asks a
+		// question is not an interrupt.
 		if n := m.pendingSchedules(); n > 0 {
 			m.armQuitConfirm(n)
 			return m, nil
 		}
-		return m, tea.Quit
-	case "S":
+		return m, m.quitCmd()
+	case aAppSetsToggle:
 		// The two lists are peers, not a stack: S toggles between them from
 		// either side, so getting back is the same key that got you there.
 		switch m.screen {
@@ -331,16 +335,15 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			if !m.appsetsLoaded {
 				return m, m.loadAppSetsCmd()
 			}
-			return m, nil
 		case screenAppSets:
 			m.screen = screenApps
-			return m, nil
 		}
-	case "C":
+		return m, nil
+	case aContexts:
 		// Which credential is in play is a property of the session, not of a
 		// screen, so it is reachable from all of them and toggles back the same
-		// way. Loaded on entry rather than at startup: it is two requests per
-		// server and most sessions never ask.
+		// way. Loaded on entry: it is two requests per server and most sessions
+		// never ask.
 		if m.screen == screenContexts {
 			m.pop()
 			m.ctxDetail = false
@@ -353,10 +356,9 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.loadContextsCmd()
 		}
 		return m, nil
-	case "W":
-		// Available from every screen: a schedule belongs to the session, not
-		// to whatever the reader happens to be looking at, and a key that only
-		// works in one place is one people cannot find when they need it.
+	case aSchedules:
+		// From every screen: a schedule belongs to the session, not to whatever
+		// the reader happens to be looking at.
 		if m.screen == screenSchedule {
 			m.pop()
 			return m, nil
@@ -364,7 +366,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.push(screenSchedule)
 		m.clampScheduleCursor()
 		return m, nil
-	case "?":
+	case aHelp:
 		if m.screen == screenHelp {
 			m.pop()
 			m.pagerTop = 0
@@ -375,40 +377,38 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// than wherever the diff underneath was scrolled to.
 		m.pagerTop = 0
 		return m, nil
-	case "esc":
-		// A range select in progress is the innermost level of all: escaping it
-		// abandons the range rather than the screen it was being made on.
+	case aPalette:
+		m.openPalette()
+		return m, nil
+	case aVisualCancel:
+		m.visualFrom = -1
+		m.setToast("range cancelled")
+		return m, nil
+	case aBack:
+		// A range in progress is the innermost level of all (normally caught by
+		// the visual context; kept here for a palette-run back).
 		if m.visualFrom >= 0 {
 			m.visualFrom = -1
 			m.setToast("range cancelled")
 			return m, nil
 		}
 		// Esc unwinds one level, and a level is not always a screen: the
-		// context view has a detail panel layered over its list. Popping the
-		// whole screen from inside the panel leaves the reader two steps away
-		// from where they were, with the panel still armed for next time.
+		// context view has a detail panel layered over its list.
 		if m.screen == screenContexts && m.ctxDetail {
 			m.ctxDetail = false
 			m.pagerTop = 0
 			return m, nil
 		}
-		// A filter is a level too. Closing the prompt with enter keeps the
-		// query — that is the point of enter — which leaves the reader on a
-		// narrowed list whose only way back to everything was to reopen the
-		// prompt and erase what they typed. Esc is already the key that undoes
-		// the innermost thing; a standing filter is the innermost thing here,
-		// and it is in front of the screen it narrows.
-		//
-		// The marks are deliberately left alone. They are what the filtering
-		// was for, and dropping a selection built across several filters
-		// because the reader wanted to see the whole list again is the surprise
-		// in the expensive direction — the status line goes on counting them.
+		// A standing filter is a level too, in front of the screen it narrows.
+		// The marks are deliberately left alone: dropping a selection built
+		// across several filters because the reader wanted to see the whole
+		// list again is the surprise in the expensive direction.
 		if m.clearStandingFilter() {
 			return m, nil
 		}
 		m.pop()
 		return m, nil
-	case "/":
+	case aFilter:
 		m.filtering = true
 		// Open at the end of whatever query is already there, so reopening a
 		// filter continues it rather than overwriting from the front.
@@ -418,37 +418,37 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch m.screen {
 	case screenApps:
-		return m.handleAppsKey(msg)
+		return m.handleAppsKey(action)
 	case screenAppSets:
-		return m.handleAppSetsKey(msg)
+		return m.handleAppSetsKey(action)
 	case screenApp:
-		return m.handleAppKey(msg)
+		return m.handleAppKey(action)
 	case screenWindows:
-		return m.handleWindowsKey(msg)
+		return m.handleWindowsKey(action)
 	case screenSchedule:
-		return m.handleScheduleKey(msg)
+		return m.handleScheduleKey(action)
 	case screenContexts:
-		return m.handleContextsKey(msg)
+		return m.handleContextsKey(action)
 	case screenDiff, screenManifest, screenLogs, screenEvents, screenHelp:
-		return m.handlePagerKey(msg)
+		return m.handlePagerKey(action)
 	}
 	return m, nil
 }
 
 // handleAppKey handles the keys shared by all three tabs, then delegates.
-func (m *Model) handleAppKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "]", "tab":
+func (m *Model) handleAppKey(action string) (tea.Model, tea.Cmd) {
+	switch action {
+	case aTabNext:
 		return m, m.cycleTab(1)
-	case "[", "shift+tab":
+	case aTabPrev:
 		return m, m.cycleTab(-1)
-	case "1":
+	case aTabResources:
 		return m, m.selectTab(tabResources)
-	case "2":
+	case aTabHistory:
 		return m, m.selectTab(tabHistory)
-	case "3":
+	case aTabDetails:
 		return m, m.selectTab(tabDetails)
-	case "o":
+	case aAppBrowser:
 		// Every tab opens the same application in the browser: there is no
 		// per-tab URL, and a key that works on two tabs out of three is worse
 		// than one that always works.
@@ -456,12 +456,12 @@ func (m *Model) handleAppKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.openBrowserCmd([]string{m.appURL(m.app)})
 		}
 		return m, nil
-	case "r", "ctrl+r":
+	case aAppReload:
 		if m.app != nil {
 			return m, m.loadTreeCmd(*m.app)
 		}
 		return m, nil
-	case "w":
+	case aAppWindows:
 		// Available from every tab: whether a sync is allowed to run is a
 		// property of the application, not of the lens you happen to be using.
 		if m.app != nil {
@@ -469,7 +469,7 @@ func (m *Model) handleAppKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, m.loadWindowsCmd(*m.app)
 		}
 		return m, nil
-	case "h", "left":
+	case aAppParent:
 		// h/← no longer leaves the application view — only Esc does that now,
 		// so a resource name that happens to contain "h" or a stray left-arrow
 		// while browsing the tree can never bounce the reader back out to the
@@ -490,11 +490,11 @@ func (m *Model) handleAppKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 	switch m.tab {
 	case tabResources:
-		return m.handleTreeKey(msg)
+		return m.handleTreeKey(action)
 	case tabHistory:
-		return m.handleHistoryKey(msg)
+		return m.handleHistoryKey(action)
 	case tabDetails:
-		return m.handleDetailsKey(msg)
+		return m.handleDetailsKey(action)
 	}
 	return m, nil
 }
@@ -520,6 +520,7 @@ func (m *Model) selectTab(t tab) tea.Cmd {
 		return nil
 	}
 	m.tab = t
+	m.lastTab = t
 	// A filter typed on one tab does not carry to another: the queries mean
 	// different things, and a stale filter that hides every row reads as an
 	// empty tab.
@@ -537,26 +538,26 @@ func (m *Model) selectTab(t tab) tea.Cmd {
 	return nil
 }
 
-func (m *Model) handleHistoryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+func (m *Model) handleHistoryKey(action string) (tea.Model, tea.Cmd) {
 	rows := m.histRows()
-	switch msg.String() {
-	case "j", "down":
+	switch action {
+	case aNavDown:
 		m.histCur++
-	case "k", "up":
+	case aNavUp:
 		m.histCur--
-	case "ctrl+d", "pgdown":
+	case aNavPgDown:
 		m.histCur += m.bodyHeight() / 2
-	case "ctrl+u", "pgup":
+	case aNavPgUp:
 		m.histCur -= m.bodyHeight() / 2
-	case "g", "home":
+	case aNavTop:
 		m.histCur, m.histTop = 0, 0
-	case "G", "end":
+	case aNavBottom:
 		m.histCur = len(rows) - 1
-	case "enter", "b", "right":
+	case aHistRollback:
 		// → drills in the way it does on every other list; what it reaches here
 		// is the rollback prompt, which asks before it does anything.
 		return m, m.armRollback()
-	case "d":
+	case aHistDiff:
 		// Diff a past deployment against what is live by looking at the app
 		// diff; a per-revision diff would need the manifests for that revision,
 		// which the managed-resources endpoint does not carry.
@@ -570,29 +571,29 @@ func (m *Model) handleHistoryKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m *Model) handleDetailsKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "j", "down":
+func (m *Model) handleDetailsKey(action string) (tea.Model, tea.Cmd) {
+	switch action {
+	case aNavDown:
 		m.moveDetail(1)
-	case "k", "up":
+	case aNavUp:
 		m.moveDetail(-1)
-	case "g", "home":
+	case aNavTop:
 		m.detailCur = 0
 		m.moveDetail(1)
 		m.moveDetail(-1)
-	case "G", "end":
+	case aNavBottom:
 		m.detailCur = len(m.detailRows()) - 1
 		m.moveDetail(-1)
 		m.moveDetail(1)
-	case "enter", "right":
+	case aDetailsEdit:
 		return m.handleDetailEnter()
-	case "e":
+	case aDetailsEvents:
 		if m.app != nil {
 			m.push(screenEvents)
 			m.pager, m.pagerTitle = nil, "events · "+m.app.Name()
 			return m, m.loadEventsCmd(*m.app)
 		}
-	case "s":
+	case aDetailsSync:
 		return m.openTreeSyncModal()
 	}
 	m.clampScroll()

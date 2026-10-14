@@ -132,8 +132,8 @@ func TestNoConfiguredToolSaysSo(t *testing.T) {
 	if cmd := m.diffToolCmd(); cmd != nil {
 		t.Error("with nothing configured there is nothing to run")
 	}
-	if !strings.Contains(m.toast.text, "diff_tool") {
-		t.Errorf("toast = %q, want it to name the setting to add", m.toast.text)
+	if !strings.Contains(m.toastText(), "diff_tool") {
+		t.Errorf("toast = %q, want it to name the setting to add", m.toastText())
 	}
 }
 
@@ -147,8 +147,8 @@ func TestDiffToolNeedsSomethingToCompare(t *testing.T) {
 	if cmd := m.diffToolCmd(); cmd != nil {
 		t.Error("there is nothing to compare")
 	}
-	if !strings.Contains(m.toast.text, "nothing to compare") {
-		t.Errorf("toast = %q, want it to say why", m.toast.text)
+	if !strings.Contains(m.toastText(), "nothing to compare") {
+		t.Errorf("toast = %q, want it to say why", m.toastText())
 	}
 }
 

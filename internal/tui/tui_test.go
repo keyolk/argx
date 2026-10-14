@@ -17,6 +17,16 @@ import (
 // hit the network).
 func newTestModel(t *testing.T, names ...string) *Model {
 	t.Helper()
+	// keys.yaml and ui.json must come from the test, never the developer.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
+	return newTestModelSameState(t, names...)
+}
+
+// newTestModelSameState is newTestModel without resetting the state directory,
+// for tests that restart argx over what the previous model saved.
+func newTestModelSameState(t *testing.T, names ...string) *Model {
+	t.Helper()
 	// Isolate from the developer's own argocd session and $BROWSER.
 	t.Setenv("HOME", t.TempDir())
 
@@ -598,7 +608,7 @@ func TestHelpDocumentsQuitAndBack(t *testing.T) {
 	m := newTestModel(t, "alpha")
 	flat := strings.Join(m.helpLines(), "\n")
 
-	if !strings.Contains(flat, "q, ctrl+c") {
+	if !strings.Contains(flat, "q/ctrl+c") {
 		t.Errorf("help does not document the quit keys:\n%s", flat)
 	}
 	if strings.Contains(flat, "q quits at the app list") {

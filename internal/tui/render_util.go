@@ -9,7 +9,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/charmbracelet/x/ansi"
+	"github.com/keyolk/tuikit/render"
 )
 
 // emptyBody is the placeholder shown when a view has nothing to list.
@@ -47,38 +47,8 @@ func padBody(lines []string, h int) string {
 // shorter than asked for), it can cut a sequence in half (sending a broken
 // control code to the terminal), and it drops the trailing reset (bleeding the
 // color into every row below). ansi.Truncate is aware of all three, and of
-// wide characters and graphemes besides.
-func truncate(s string, w int) string {
-	if w <= 0 {
-		return ""
-	}
-	if lipgloss.Width(s) <= w {
-		return s
-	}
-	return ansi.Truncate(s, w, "…")
-}
-
-// padRight pads to w display cells.
-func padRight(s string, w int) string {
-	d := w - lipgloss.Width(s)
-	if d <= 0 {
-		return s
-	}
-	return s + strings.Repeat(" ", d)
-}
-
-// padLeft pads to w display cells, right-aligning the content.
-//
-// Numbers are read against each other, so a column of them lines up on its
-// right edge — the units have to share a column or the magnitudes do not
-// compare.
-func padLeft(s string, w int) string {
-	d := w - lipgloss.Width(s)
-	if d <= 0 {
-		return s
-	}
-	return strings.Repeat(" ", d) + s
-}
+// wide characters and graphemes besides. render.Truncate is that, shared.
+func truncate(s string, w int) string { return render.Truncate(s, w) }
 
 // shortRev abbreviates a git SHA, leaving non-SHA revisions (chart versions,
 // tags) intact.

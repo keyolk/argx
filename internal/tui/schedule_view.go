@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/keyolk/tuikit/render"
 )
 
 // The scheduled-sync list.
@@ -76,8 +77,8 @@ func (m *Model) renderSchedule() string {
 
 		// The whole point of the column is the countdown, and "08-31 03:36 (in
 		// 1…" answers neither question. 24 cells fit "08-31 03:36 (in 1h30m)".
-		line := cursor + " " + stateStyle.Render(padRight(s.state.String(), 10)) + " " +
-			m.st.dim.Render(padRight(truncate(when, whenCol), whenCol)) + " " +
+		line := cursor + " " + stateStyle.Render(render.PadRight(s.state.String(), 10)) + " " +
+			m.st.dim.Render(render.PadRight(truncate(when, whenCol), whenCol)) + " " +
 			nameStyle.Render(name)
 		lines = append(lines, truncate(line, m.width))
 
@@ -109,39 +110,39 @@ func (m *Model) scheduleDetail(s scheduled) string {
 }
 
 // handleScheduleKey handles the scheduled-sync list.
-func (m *Model) handleScheduleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "j", "down":
+func (m *Model) handleScheduleKey(action string) (tea.Model, tea.Cmd) {
+	switch action {
+	case aNavDown:
 		m.scheduleCur++
-	case "k", "up":
+	case aNavUp:
 		m.scheduleCur--
-	case "g", "home":
+	case aNavTop:
 		m.scheduleCur = 0
-	case "G", "end":
+	case aNavBottom:
 		m.scheduleCur = len(m.schedules) - 1
-	case "ctrl+d", "pgdown":
+	case aNavPgDown:
 		m.scheduleCur += m.bodyHeight() / 2
-	case "ctrl+u", "pgup":
+	case aNavPgUp:
 		m.scheduleCur -= m.bodyHeight() / 2
-	case "x", "d":
+	case aSchedCancel:
 		// Cancelling is destructive only in the sense that the sync will not
 		// happen, which is recoverable by scheduling it again — so no
 		// confirmation, unlike the sync itself.
 		if s := m.currentSchedule(); s != nil {
 			m.cancelSchedule(s.id)
 		}
-	case "c":
+	case aSchedClear:
 		if n := m.clearFinishedSchedules(); n > 0 {
 			m.setToast(fmt.Sprintf("cleared %d finished", n))
 			m.clampScheduleCursor()
 		}
-	case "o":
+	case aSchedBrowser:
 		if s := m.currentSchedule(); s != nil {
 			if u := m.scheduleURL(*s); u != "" {
 				return m, m.openBrowserCmd([]string{u})
 			}
 		}
-	case "h", "left", "esc":
+	case aSchedLeave:
 		m.pop()
 		return m, nil
 	}
@@ -190,16 +191,18 @@ func (m *Model) clampScheduleCursor() {
 	}
 }
 
-// armQuitConfirm asks before dropping pending scheduled syncs.
+// armQuitConfirm asks before pausing pending scheduled syncs.
 //
 // Nothing else in argx blocks quitting, and this only does because the
-// schedules live in this process: there is no daemon to pick them up, so
-// quitting is what cancels them.
+// schedules run in this process: they are saved and come back on the next
+// start, but nothing fires while argx is closed — and a window that opens and
+// closes in between is missed.
 func (m *Model) armQuitConfirm(n int) {
 	now := time.Now()
 	body := []string{
 		fmt.Sprintf("%d scheduled sync(s) have not run yet.", n),
-		m.st.dim.Render("They exist only in this session and will not run after argx exits."),
+		m.st.dim.Render("They are kept, but nothing runs until argx starts again — a window that"),
+		m.st.dim.Render("opens and closes in the meantime is missed."),
 		"",
 	}
 	shown := 0
@@ -215,9 +218,9 @@ func (m *Model) armQuitConfirm(n int) {
 		shown++
 	}
 	m.confirm = confirmState{
-		title:  "Quit and drop them?",
+		title:  "Quit and pause them?",
 		body:   body,
-		action: func() tea.Cmd { return tea.Quit },
+		action: func() tea.Cmd { return m.quitCmd() },
 	}
 	m.overlay = overlayConfirm
 }

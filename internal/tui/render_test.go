@@ -18,6 +18,9 @@ import (
 func fixtureModel(t *testing.T, w, h int) *Model {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
+	// keys.yaml and ui.json must come from the test, never the developer.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("NO_COLOR", "1")
 
 	fleet := argocd.NewFleet([]config.Context{{Name: "prod.argocd", Server: "argocd.example.com"}})

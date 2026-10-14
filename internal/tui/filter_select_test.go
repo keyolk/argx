@@ -225,7 +225,7 @@ func TestInterruptStillQuitsFromAFilteredList(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("ctrl+c produced no command")
 	}
-	if _, ok := cmd().(tea.QuitMsg); !ok {
+	if !quits(t, m, cmd) {
 		t.Error("ctrl+c should quit even mid-filter")
 	}
 }
@@ -263,7 +263,7 @@ func TestQuitIsUnaffectedByAStandingFilter(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("q produced no command")
 	}
-	if _, ok := cmd().(tea.QuitMsg); !ok {
+	if !quits(t, m, cmd) {
 		t.Error("q should still quit from a filtered list")
 	}
 }
@@ -454,7 +454,16 @@ func TestEscCancelsARangeFromInsideThePrompt(t *testing.T) {
 // The keys that mark are exactly the keys the prompt refuses to treat as text
 // or as text-cursor movement, and no others.
 func TestMarkKeysDoNotReachTheQuery(t *testing.T) {
-	for k := range filterMarkKeys {
+	var markKeys []string
+	for _, b := range baseKeymap.Bindings() {
+		if b.Ctx == ctxFilterMarks {
+			markKeys = append(markKeys, b.Keys...)
+		}
+	}
+	if len(markKeys) == 0 {
+		t.Fatal("no keys in the filter's mark context")
+	}
+	for _, k := range markKeys {
 		m := markModel(t, "web-a")
 		press(t, m, "/")
 		press(t, m, "w")

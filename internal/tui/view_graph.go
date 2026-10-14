@@ -15,6 +15,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/keyolk/argx/internal/argocd"
+	"github.com/keyolk/tuikit/render"
 )
 
 // A node's box is three content lines — kind, name, health — plus a border
@@ -320,7 +321,7 @@ func (m *Model) boxLines(w int, cur bool, content [boxContentLines]string) []str
 	lines := make([]string, 0, boxHeight)
 	lines = append(lines, top)
 	for _, s := range content {
-		lines = append(lines, vv+" "+padRight(truncate(s, w), w)+" "+vv)
+		lines = append(lines, vv+" "+render.PadRight(truncate(s, w), w)+" "+vv)
 	}
 	lines = append(lines, bot)
 	return lines

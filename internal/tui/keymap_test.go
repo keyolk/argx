@@ -1,49 +1,9 @@
 package tui
 
-import (
-	"testing"
+import "testing"
 
-	tea "github.com/charmbracelet/bubbletea"
-)
-
-func TestNormalizeCJKKeyMapsJamoByPhysicalPosition(t *testing.T) {
-	for jamo, want := range map[string]string{
-		"ㅂ": "q", "ㅁ": "a", "ㅋ": "z", "ㅓ": "j", "ㅏ": "k",
-		"ㅃ": "Q", "ㄲ": "R",
-	} {
-		if got := normalizeCJKKey(key(jamo)).String(); got != want {
-			t.Errorf("normalizeCJKKey(%q) = %q, want %q", jamo, got, want)
-		}
-	}
-}
-
-func TestNormalizeCJKKeyLeavesEverythingElseAlone(t *testing.T) {
-	// Latin keys, digits, and composed syllables pass through: a composed
-	// syllable only reaches the TUI as committed text, never as a shortcut.
-	for _, k := range []string{"q", "R", "0", "가"} {
-		if got := normalizeCJKKey(key(k)).String(); got != k {
-			t.Errorf("normalizeCJKKey(%q) = %q, want it unchanged", k, got)
-		}
-	}
-	for _, in := range []tea.KeyMsg{{Type: tea.KeyEnter}, {Type: tea.KeyCtrlC}, {Type: tea.KeyEsc}} {
-		if got := normalizeCJKKey(in); got.String() != in.String() {
-			t.Errorf("normalizeCJKKey(%q) = %q, want it unchanged", in.String(), got.String())
-		}
-	}
-}
-
-func TestNormalizeCJKKeyLeavesPasteAndAltAlone(t *testing.T) {
-	paste := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'ㅂ'}, Paste: true}
-	if got := normalizeCJKKey(paste); got.String() != paste.String() {
-		t.Errorf("pasted jamo was rewritten to %q", got.String())
-	}
-	// alt+<jamo> is a chord, not text: argx binds alt+b / alt+f in the filter,
-	// and rewriting the rune would change which chord fires.
-	alt := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'ㅂ'}, Alt: true}
-	if got := normalizeCJKKey(alt); got.String() != alt.String() {
-		t.Errorf("alt chord was rewritten to %q", got.String())
-	}
-}
+// The jamo mapping itself is tuikit's (keys.NormalizeCJK) and tested there;
+// these go through argx's dispatcher.
 
 // --- through the real dispatcher --------------------------------------------
 
@@ -72,7 +32,7 @@ func TestHangulQuitsLikeLatinQ(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("ㅂ (physical q) produced no command; expected quit")
 	}
-	if _, ok := cmd().(tea.QuitMsg); !ok {
+	if !quits(t, m, cmd) {
 		t.Fatal("ㅂ (physical q) did not quit")
 	}
 }

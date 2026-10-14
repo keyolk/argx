@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/keyolk/tuikit/render"
 )
 
 // View renders the whole frame. Pure: no I/O, no state mutation.
@@ -134,13 +135,40 @@ func (m *Model) renderTabBar() string {
 		// The number is always shown — it is the key that selects the tab, and
 		// an icon that replaced it would hide the binding.
 		label := fmt.Sprintf("%d %s%s", i+1, m.gl.prefix(m.gl.tabIcon(t)), t)
+		style := m.st.dim
 		if t == m.tab {
-			parts = append(parts, m.st.selected.Render(label))
-			continue
+			style = m.st.selected
 		}
-		parts = append(parts, m.st.dim.Render(label))
+		// The badge is styled on its own, after the label: what a tab holds is
+		// worth seeing before switching to it, and its color is the point.
+		parts = append(parts, style.Render(label)+m.tabBadge(t))
 	}
 	return strings.Join(parts, m.st.dim.Render(m.gl.tabSep))
+}
+
+// tabBadge is what a tab holds, shown on the tab itself so the reader knows
+// before switching: RESOURCES counts resources out of sync, HISTORY counts
+// deployments, DETAILS marks a degraded application. Empty when there is
+// nothing to say — a badge reading 0 is noise.
+func (m *Model) tabBadge(t tab) string {
+	if m.app == nil {
+		return ""
+	}
+	switch t {
+	case tabResources:
+		if n := m.app.OutOfSyncCount(); n > 0 {
+			return " " + m.st.warn.Render(fmt.Sprintf("%s%d", m.gl.outOfSync, n))
+		}
+	case tabHistory:
+		if n := len(m.app.Status.History); n > 0 {
+			return " " + m.st.dim.Render(fmt.Sprintf("%d", n))
+		}
+	case tabDetails:
+		if m.app.Status.Health.Status == "Degraded" {
+			return " " + m.st.err.Render(m.gl.no)
+		}
+	}
+	return ""
 }
 
 // renderAppTab dispatches to the active tab's renderer.
@@ -169,7 +197,7 @@ func (m *Model) renderHistory() string {
 
 	lines := make([]string, 0, h)
 	lines = append(lines, m.st.header.Render(truncate(
-		"   ID   "+padRight("DEPLOYED", 20)+" "+padRight("REVISION", 12)+" BY", m.width)))
+		"   ID   "+render.PadRight("DEPLOYED", 20)+" "+render.PadRight("REVISION", 12)+" BY", m.width)))
 
 	for r := m.histTop; r < len(rows) && len(lines) < h; r++ {
 		e := rows[r]
@@ -198,9 +226,9 @@ func (m *Model) renderHistory() string {
 		who := m.gl.prefix(m.gl.person) + e.Who()
 
 		line := cursor + "  " +
-			m.st.dim.Render(padRight(fmt.Sprint(e.ID), 4)) + " " +
-			style.Render(padRight(when, 20)) + " " +
-			m.st.info.Render(padRight(rev, 12)) + " " +
+			m.st.dim.Render(render.PadRight(fmt.Sprint(e.ID), 4)) + " " +
+			style.Render(render.PadRight(when, 20)) + " " +
+			m.st.info.Render(render.PadRight(rev, 12)) + " " +
 			m.st.dim.Render(who) + suffix
 		lines = append(lines, truncate(line, m.width))
 	}
@@ -265,7 +293,7 @@ func (m *Model) renderDetails() string {
 		}
 
 		line := cursor + edit + " " +
-			m.st.dim.Render(padRight(truncate(r.label, labelW), labelW)) + "  " +
+			m.st.dim.Render(render.PadRight(truncate(r.label, labelW), labelW)) + "  " +
 			valStyle.Render(r.value)
 		if r.note != "" {
 			line += m.st.dim.Render("  (" + r.note + ")")

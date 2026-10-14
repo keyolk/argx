@@ -18,6 +18,9 @@ import (
 func fleetModel(t *testing.T, apps map[string][]string) *Model {
 	t.Helper()
 	t.Setenv("HOME", t.TempDir())
+	// keys.yaml and ui.json must come from the test, never the developer.
+	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
+	t.Setenv("XDG_STATE_HOME", t.TempDir())
 	t.Setenv("NO_COLOR", "1")
 
 	// Fleet order is the order the contexts are given, and the tests depend on

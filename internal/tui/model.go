@@ -23,11 +23,18 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
 	"net/url"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+
+	"github.com/keyolk/tuikit/keys"
+	"github.com/keyolk/tuikit/prefs"
+	"github.com/keyolk/tuikit/toast"
 
 	"github.com/keyolk/argx/internal/argocd"
 	"github.com/keyolk/argx/internal/config"
@@ -97,6 +104,8 @@ const (
 	// overlayContainer chooses which container of a multi-container pod to read
 	// logs from or exec into.
 	overlayContainer
+	// overlayPalette is the command palette (:), over the screen's actions.
+	overlayPalette
 )
 
 const (
@@ -117,6 +126,9 @@ type Model struct {
 
 	st *styles
 	gl glyphSet
+	// km is the binding table in effect; the zero value means the defaults
+	// (see keymap).
+	km keys.Keymap
 
 	width    int
 	height   int
@@ -198,6 +210,8 @@ type Model struct {
 	revPicker revPickerState
 	// picker is the container chooser backing overlayContainer.
 	picker containerPicker
+	// palette backs overlayPalette.
+	palette paletteState
 
 	// ---- pager views (diff, manifest, logs, events) ----
 	pager      []string
@@ -295,13 +309,28 @@ type Model struct {
 	appsInFlight bool
 
 	// ---- transient feedback ----
-	toast       toastState
+	toasts toast.Queue
+	// toastCmds are the expiry ticks of toasts queued during this Update.
+	toastCmds   []tea.Cmd
 	errMsg      string
 	confirm     confirmState
 	syncOpts    syncOptState
 	autoRefresh bool
 	// tickGen identifies the live auto-refresh chain; see tickMsg.
 	tickGen uint64
+	// lastTab is the tab the application view opens on: the one last used,
+	// kept across restarts.
+	lastTab tab
+	// saver writes uiState to $XDG_STATE_HOME/argx/ui.json; savedUI is the
+	// last state handed to it, so an unchanged Update writes nothing.
+	saver   prefs.Saver[uiState]
+	savedUI []byte
+
+	// startErr is a problem found while building the model (a bad keys.yaml),
+	// reported as a toast by Init rather than refusing to start.
+	startErr error
+	// restored is how many pending schedules came back from ui.json.
+	restored int
 }
 
 // confirmState describes a pending yes/no prompt.
@@ -369,7 +398,11 @@ func New(ctx context.Context, fleet *argocd.Fleet, cfg *config.Config) *Model {
 	st := newStyles()
 	st.initContexts(len(fleet.Names()))
 	gl := newGlyphsFor(cfg.Icons)
-	return &Model{
+	// A broken keys.yaml must not keep argx from starting: the defaults run
+	// and the reason is shown once the first frame is up.
+	km, kmErr := loadKeymap()
+	m := &Model{
+		km:         km,
 		ctx:        ctx,
 		fleet:      fleet,
 		cfg:        cfg,
@@ -384,11 +417,43 @@ func New(ctx context.Context, fleet *argocd.Fleet, cfg *config.Config) *Model {
 		width:      80,
 		height:     24,
 	}
+	if kmErr != nil {
+		m.startErr = kmErr
+	}
+	m.saver = prefs.NewSaver[uiState](prefsApp, 0)
+	ui, err := prefs.Load(prefsApp, uiState{})
+	if err != nil {
+		// A corrupt ui.json costs the remembered state, not the session.
+		m.startErr = errors.Join(m.startErr, err)
+	}
+	m.restored = m.restoreUI(ui)
+	// What was loaded is what is on disk; writing it straight back is noise.
+	m.savedUI, _ = json.Marshal(m.uiState())
+	return m
 }
 
 // Init loads the application list.
 func (m *Model) Init() tea.Cmd {
-	return tea.Batch(m.loadAppsCmd(), tea.WindowSize())
+	cmds := []tea.Cmd{m.loadAppsCmd(), tea.WindowSize()}
+	if m.autoRefresh {
+		m.tickGen++
+		cmds = append(cmds, tickCmd(m.tickGen))
+	}
+	if m.restored > 0 {
+		// The ticker runs only while something is pending; restored work is
+		// pending work. The toast says it came back, so nothing fires unnoticed.
+		cmds = append(cmds, scheduleTickCmd())
+		n := m.restored
+		cmds = append(cmds, func() tea.Msg {
+			return toastMsg{text: fmt.Sprintf("restored %d scheduled sync(s) — W to review", n)}
+		})
+	}
+	if err := m.startErr; err != nil {
+		cmds = append(cmds, func() tea.Msg {
+			return errMsg{err: fmt.Errorf("%w\n\nUsing the default keys.", err)}
+		})
+	}
+	return tea.Batch(cmds...)
 }
 
 // ---- selection helpers ----
@@ -547,37 +612,43 @@ func (m *Model) pop() {
 	m.prev = m.prev[:len(m.prev)-1]
 }
 
-// toastLevel is how a toast is colored. A failure must not read as success.
-type toastLevel int
-
-const (
-	toastInfo toastLevel = iota
-	toastWarn
-	toastErr
-)
-
-// toastTTL is how long a toast stays in the status line.
+// toastTTL is how long a non-error toast stays in the status line. Errors stay
+// until a key is pressed after they were on screen (toast.OnKey): a failure
+// that times out while the reader looked away is a failure they never saw.
 const toastTTL = 5 * time.Second
 
-// toastState is the one transient status-line message.
-//
-// seq identifies the toast so its expiry timer clears only that toast: a newer
-// toast set before the older one's timer fires must survive it.
-type toastState struct {
-	text  string
-	level toastLevel
-	seq   uint64
-}
-
-// toastExpireMsg clears the toast stamped seq, if it is still the one shown.
-type toastExpireMsg struct{ seq uint64 }
+// Toast sources. The queue keeps the newest toast per source, so a later
+// "synced" does not wipe a sync failure the reader has not seen yet.
+const (
+	toastSrcStatus = "status"
+	toastSrcError  = "error"
+)
 
 // setToast shows a transient informational message in the status line.
-func (m *Model) setToast(s string) { m.setToastLevel(toastInfo, s) }
+func (m *Model) setToast(s string) { m.setToastLevel(toast.Info, s) }
 
-// setToastErr shows a transient failure, in the error color.
-func (m *Model) setToastErr(s string) { m.setToastLevel(toastErr, s) }
+// setToastErr shows a failure, in the error color, until the next key.
+func (m *Model) setToastErr(s string) { m.setToastLevel(toast.Error, s) }
 
-func (m *Model) setToastLevel(level toastLevel, s string) {
-	m.toast = toastState{text: s, level: level, seq: m.toast.seq + 1}
+// setToastLevel queues a toast. Its expiry tick is collected and returned by
+// Update, which keeps the many call sites from having to thread a tea.Cmd.
+func (m *Model) setToastLevel(level toast.Level, s string) {
+	src := toastSrcStatus
+	if level == toast.Error {
+		src = toastSrcError
+	}
+	var cmd tea.Cmd
+	m.toasts, cmd = toast.Push(m.toasts, toast.Toast{Source: src, Text: s, Level: level, TTL: toastTTL})
+	if cmd != nil {
+		m.toastCmds = append(m.toastCmds, cmd)
+	}
+}
+
+// toastText is the newest toast's text, or "" (for tests and the status line).
+func (m *Model) toastText() string {
+	items := m.toasts.Items()
+	if len(items) == 0 {
+		return ""
+	}
+	return items[len(items)-1].Text
 }

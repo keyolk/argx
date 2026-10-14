@@ -133,7 +133,7 @@ func TestCancelRefusesARunningSync(t *testing.T) {
 	if m.schedules[0].state != scheduleRunning {
 		t.Errorf("state = %v, want it left running", m.schedules[0].state)
 	}
-	if m.toast.text == "" {
+	if m.toastText() == "" {
 		t.Error("refusing to cancel should say so rather than doing nothing visible")
 	}
 }
@@ -200,8 +200,8 @@ func TestUnschedulableApplicationsAreReported(t *testing.T) {
 	m := newTestModel(t)
 	m.addSchedules(scheduledMsg{failed: []string{"web: cannot parse schedule"}})
 
-	if !strings.Contains(m.toast.text, "web") {
-		t.Errorf("toast = %q, want the application that could not be scheduled named", m.toast.text)
+	if !strings.Contains(m.toastText(), "web") {
+		t.Errorf("toast = %q, want the application that could not be scheduled named", m.toastText())
 	}
 	if len(m.schedules) != 0 {
 		t.Error("nothing should have been scheduled")
@@ -214,7 +214,8 @@ func TestQuitAsksWhenSchedulesArePending(t *testing.T) {
 	m := newTestModel(t, "web")
 	m.schedules = []scheduled{sched(1, "web", time.Hour)}
 
-	_, cmd := m.Update(key("q"))
+	// update, not Update: Update also saves the schedules set above.
+	_, cmd := m.update(key("q"))
 
 	if cmd != nil {
 		t.Error("q should open a prompt, not quit outright, while syncs are waiting")
@@ -484,7 +485,7 @@ func TestNoScheduleHintWhenNothingIsPending(t *testing.T) {
 	}
 }
 
-// A narrow terminal drops hints from the right, so the pending count must lead
+// A narrow terminal drops hints from the right, so the pending hint must lead
 // — it is the one that cannot be rediscovered any other way.
 func TestScheduleHintSurvivesANarrowTerminal(t *testing.T) {
 	m := newTestModel(t, "web")
@@ -527,7 +528,9 @@ func TestWindowViewPointsAtScheduling(t *testing.T) {
 	m.Update(tea.WindowSizeMsg{Width: 160, Height: 24})
 	m.screen = screenWindows
 
-	if out := stripANSI(m.renderFooter()); !strings.Contains(out, "schedule") {
+	// The status line, not the footer: no key on this screen schedules, so the
+	// footer (derived from the bindings) has nothing to name.
+	if out := stripANSI(m.renderStatus()); !strings.Contains(out, "schedule") {
 		t.Errorf("the window view should offer scheduling:\n%s", out)
 	}
 }
