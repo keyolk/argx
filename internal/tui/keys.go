@@ -12,7 +12,11 @@ package tui
 // the same context as each list's own keys, so a second owner is a Duplicate
 // conflict that TestKeymapHasNoConflicts fails on.
 
-import "github.com/keyolk/tuikit/keys"
+import (
+	"fmt"
+
+	"github.com/keyolk/tuikit/keys"
+)
 
 // Contexts. A stack of them is active at a time, innermost first; see keyStack.
 //
@@ -633,7 +637,18 @@ func (m *Model) keyStack() []keys.Ctx {
 // keyOpts is the model's view of its actions, rebuilt per call so it always
 // reads the model being handled (see keys.Opts).
 func (m *Model) keyOpts() keys.Opts {
-	return keys.Opts{Enabled: m.actionEnabled, Visible: m.actionVisible, State: m.actionState}
+	return keys.Opts{Enabled: m.actionEnabled, Visible: m.actionVisible, State: m.actionState, Label: m.actionLabel}
+}
+
+// actionLabel carries live values into the footer. The pending-sync count
+// leads it: "W 3 scheduled" says both that something is waiting and how much.
+func (m *Model) actionLabel(a string) (string, bool) {
+	if a == aSchedules {
+		if n := m.pendingSchedules(); n > 0 {
+			return fmt.Sprintf("%d scheduled", n), true
+		}
+	}
+	return "", false
 }
 
 // actionEnabled gates dispatch and the palette. A disabled key falls through

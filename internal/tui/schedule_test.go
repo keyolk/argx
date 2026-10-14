@@ -459,7 +459,7 @@ func TestPendingSchedulesAreHintedOnEveryScreen(t *testing.T) {
 		m.schedules = []scheduled{sched(1, "web", time.Hour)}
 		m.screen = sc
 
-		if out := stripANSI(m.renderFooter()); !strings.Contains(out, "W scheduled") {
+		if out := stripANSI(m.renderFooter()); !strings.Contains(out, "W 1 scheduled") {
 			t.Errorf("screen %v footer does not mention the pending sync:\n%s", sc, out)
 		}
 	}
@@ -469,7 +469,7 @@ func TestPendingSchedulesAreHintedOnEveryScreen(t *testing.T) {
 	m.Update(tea.WindowSizeMsg{Width: 160, Height: 24})
 	m.schedules = []scheduled{sched(1, "web", time.Hour)}
 	m.screen = screenSchedule
-	if out := stripANSI(m.renderFooter()); strings.Contains(out, "W scheduled") {
+	if out := stripANSI(m.renderFooter()); strings.Contains(out, "W 1 scheduled") {
 		t.Errorf("the schedule list should not point at itself:\n%s", out)
 	}
 }
@@ -486,15 +486,13 @@ func TestNoScheduleHintWhenNothingIsPending(t *testing.T) {
 }
 
 // A narrow terminal drops hints from the right, so the pending hint must lead
-// — it is the one that cannot be rediscovered any other way. (The count itself
-// is on the application list's status line: a footer label is table data and
-// cannot carry a number.)
+// — it is the one that cannot be rediscovered any other way.
 func TestScheduleHintSurvivesANarrowTerminal(t *testing.T) {
 	m := newTestModel(t, "web")
 	m.Update(tea.WindowSizeMsg{Width: 60, Height: 24})
 	m.schedules = []scheduled{sched(1, "web", time.Hour)}
 
-	if out := stripANSI(m.renderFooter()); !strings.Contains(out, "W scheduled") {
+	if out := stripANSI(m.renderFooter()); !strings.Contains(out, "W 1 scheduled") {
 		t.Errorf("the pending count should outlive the other hints at 60 columns:\n%s", out)
 	}
 }
