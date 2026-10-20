@@ -94,6 +94,29 @@ func TestTwoClicksOnDifferentRowsDoNotOpen(t *testing.T) {
 	}
 }
 
+// A key between two clicks breaks the pair. Click a row, j, k back to it,
+// click again inside the double-click window: that is a fresh first click,
+// so it selects and must not open the application.
+func TestKeyBetweenClicksBreaksTheDoubleClick(t *testing.T) {
+	m := mouseApps(t, 5, 120, 30)
+	x, y := at(t, m, "svc-02")
+	click(m, x, y)
+	m.Update(key("j"))
+	m.Update(key("k"))
+	if got := m.currentApp().Name(); got != "svc-02" {
+		t.Fatalf("selected %q after j, k; want back on svc-02", got)
+	}
+	if cmd := click(m, x, y); cmd != nil {
+		t.Fatal("a key between the clicks must break the double click; a command was issued")
+	}
+	if m.screen != screenApps {
+		t.Fatalf("screen=%v: a key between the clicks must break the double click", m.screen)
+	}
+	if got := m.currentApp().Name(); got != "svc-02" {
+		t.Fatalf("selected %q, want svc-02 still selected", got)
+	}
+}
+
 func TestASlowSecondClickIsNotADoubleClick(t *testing.T) {
 	m := mouseApps(t, 3, 120, 30)
 	x, y := at(t, m, "svc-02")
