@@ -383,6 +383,12 @@ func (m *Model) confirmChoices() string {
 
 // renderOverlay draws a modal centered over the frame.
 func (m *Model) renderOverlay(frame string) string {
+	return m.spliceOverlay(frame, m.overlayBox())
+}
+
+// overlayBox is the modal's own text. It is separate from renderOverlay so the
+// mouse handler measures the same box View draws instead of recomputing it.
+func (m *Model) overlayBox() string {
 	var box string
 	switch m.overlay {
 	case overlayError:
@@ -456,7 +462,7 @@ func (m *Model) renderOverlay(frame string) string {
 			clampModalBody(lines, m.modalContentWidth(64), m.modalContentHeight()), "\n"))
 	}
 
-	return m.spliceOverlay(frame, box)
+	return box
 }
 
 // spliceOverlay centers box over a dimmed copy of frame.

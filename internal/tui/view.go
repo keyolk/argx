@@ -261,15 +261,14 @@ func (m *Model) renderDetails() string {
 	}
 
 	lines := make([]string, 0, h)
-	for i := 0; i < len(rows) && len(lines) < h; i++ {
+	for _, i := range detailLayout(rows, h) {
+		if i < 0 {
+			lines = append(lines, "")
+			continue
+		}
 		r := rows[i]
 		if r.kind == detailSection {
-			if len(lines) > 0 {
-				lines = append(lines, "")
-			}
-			if len(lines) < h {
-				lines = append(lines, m.st.header.Render(truncate(r.label, m.width)))
-			}
+			lines = append(lines, m.st.header.Render(truncate(r.label, m.width)))
 			continue
 		}
 
@@ -307,3 +306,23 @@ func (m *Model) renderDetails() string {
 
 // renderApps is the application list: mark, status letters, name, project,
 // destination, revision.
+
+// detailLayout maps each screen line of the DETAILS tab to the row drawn on it,
+// or -1 for the blank line that sets a section off. renderDetails draws from
+// it and the mouse handler hit-tests against it, so the two cannot disagree
+// about where a row is.
+func detailLayout(rows []detailRow, h int) []int {
+	var out []int
+	for i, r := range rows {
+		if len(out) >= h {
+			break
+		}
+		if r.kind == detailSection && len(out) > 0 {
+			out = append(out, -1)
+		}
+		if len(out) < h {
+			out = append(out, i)
+		}
+	}
+	return out
+}

@@ -33,6 +33,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/keyolk/tuikit/keys"
+	"github.com/keyolk/tuikit/mouse"
 	"github.com/keyolk/tuikit/prefs"
 	"github.com/keyolk/tuikit/toast"
 
@@ -307,6 +308,12 @@ type Model struct {
 	// (current) response lands. The auto-refresh tick checks it so a slow fleet
 	// — the request timeout is longer than the tick — does not stack loads.
 	appsInFlight bool
+
+	// clicks tracks the last mouse press, so a second click on the selected row
+	// can be told from two clicks on different rows. now is the clock for it,
+	// replaced by tests.
+	clicks mouse.Clicks
+	now    func() time.Time
 
 	// ---- transient feedback ----
 	toasts toast.Queue
