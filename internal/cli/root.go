@@ -11,6 +11,7 @@ import (
 	"text/tabwriter"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/keyolk/tuikit/mouse"
 	"github.com/spf13/cobra"
 
 	"github.com/keyolk/argx/internal/argocd"
@@ -82,7 +83,8 @@ func runTUI(cmd *cobra.Command, _ []string) error {
 	}
 
 	m := tui.New(ctx, fleet, cfg)
-	p := tea.NewProgram(m, tea.WithAltScreen(), tea.WithContext(ctx))
+	opts := append([]tea.ProgramOption{tea.WithAltScreen(), tea.WithContext(ctx)}, mouse.ProgramOptions()...)
+	p := tea.NewProgram(m, opts...)
 
 	// A panic inside the program would otherwise leave the terminal in raw mode
 	// and on the alternate screen; kill the program so its restore runs before

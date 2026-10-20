@@ -261,6 +261,9 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case tea.MouseMsg:
+		return m.handleMouse(msg)
+
 	case tea.KeyMsg:
 		// ctrl+c is the terminal's interrupt and quits from anywhere: inside a
 		// modal, mid-search, during a confirmation. Routing it through the
