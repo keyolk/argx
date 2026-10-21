@@ -97,14 +97,19 @@ func sideBySide(lines []string) []sxsRow {
 }
 
 // renderSideBySide draws the paired rows into two columns.
+// sxsGutter is the single vertical rule between the columns. Two columns of
+// text with nothing between them read as one wrapped column.
+const sxsGutter = " │ "
+
+// sxsColumns is the width of each side-by-side column and of the gutter
+// between them; the drag selection splits the body with the same numbers.
+func (m *Model) sxsColumns() (col, gutter int) {
+	gutter = lipgloss.Width(sxsGutter)
+	return max(1, (m.width-gutter)/2), gutter
+}
+
 func (m *Model) renderSideBySide(rows []sxsRow, top, h int) []string {
-	// The gutter is a single vertical rule. Two columns of text with nothing
-	// between them read as one wrapped column.
-	const gutter = " │ "
-	col := (m.width - lipgloss.Width(gutter)) / 2
-	if col < 1 {
-		col = 1
-	}
+	col, _ := m.sxsColumns()
 
 	out := make([]string, 0, h)
 	for i := top; i < len(rows) && len(out) < h; i++ {
@@ -143,7 +148,7 @@ func (m *Model) renderSideBySide(rows []sxsRow, top, h int) []string {
 			rStyle = lipgloss.NewStyle()
 		}
 
-		out = append(out, lStyle.Render(left)+m.st.dim.Render(gutter)+rStyle.Render(right))
+		out = append(out, lStyle.Render(left)+m.st.dim.Render(sxsGutter)+rStyle.Render(right))
 	}
 	return out
 }
