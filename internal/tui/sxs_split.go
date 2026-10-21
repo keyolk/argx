@@ -96,5 +96,10 @@ func (m *Model) splitMouse(msg tea.MouseMsg) bool {
 	}
 	var r split.Result
 	m.sxsSplit, r = m.sxsSplitModel().Update(msg, m.bodyRect())
+	if r.Consumed && mouse.IsLeftPress(msg) {
+		// The selection never sees this press, so it would keep its
+		// highlight over cells the resize is about to move.
+		m.textSel.Clear()
+	}
 	return r.Consumed
 }

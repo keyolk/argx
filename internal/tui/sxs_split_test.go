@@ -90,6 +90,16 @@ func TestColumnPressStillSelectsAndGutterPressNever(t *testing.T) {
 	if got := copiedText(m); !strings.Contains(got, "replicas") {
 		t.Errorf("a drag in the left column copied %q", got)
 	}
+	// A gutter press clears that highlight: the selection never sees the
+	// press, and the resize moves the cells it covers.
+	if len(tuitest.Reversed(m.View())) == 0 {
+		t.Fatal("setup: the copied text is not highlighted")
+	}
+	gx, gy := gutterAt(t, m, "replicas: 3")
+	mouseDo(m, gx, gy, tea.MouseButtonLeft, tea.MouseActionPress)
+	if len(tuitest.Reversed(m.View())) != 0 || m.textSel.Active() {
+		t.Error("a gutter press left the old selection on screen")
+	}
 	m = sxsModel(t, 140, 20)
 	x, y := gutterAt(t, m, "replicas: 3")
 	mouseDo(m, x, y, tea.MouseButtonLeft, tea.MouseActionPress)
