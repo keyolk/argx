@@ -11,6 +11,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/keyolk/tuikit/link"
 
 	"github.com/keyolk/argx/internal/argocd"
 )
@@ -374,6 +375,12 @@ func (m *Model) openBrowserCmd(urls []string) tea.Cmd {
 		opened := 0
 		for _, u := range urls {
 			if u == "" {
+				continue
+			}
+			// Only http(s) reaches the opener (E11): it runs a program with
+			// the URL as its argument, and the URL is built from config.
+			if !link.Valid(u) {
+				errs = append(errs, fmt.Errorf("open %q: %w", u, link.ErrInvalid))
 				continue
 			}
 			c, cancel := context.WithTimeout(ctx, 10*time.Second)

@@ -311,5 +311,6 @@ func (f *Fleet) SetURL(s *ApplicationSet) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return c.Context().BaseURL() + "/applicationsets/" + s.Name(), nil
+	// Escaped like AppURL: the URL is also an OSC 8 link target.
+	return c.Context().BaseURL() + "/applicationsets/" + url.PathEscape(s.Name()), nil
 }

@@ -7,7 +7,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/ansi v0.10.1
 	github.com/gorilla/websocket v1.5.3
-	github.com/keyolk/tuikit v0.0.0-20261021024723-c19aa4f0fc4c
+	github.com/keyolk/tuikit v0.0.0-20261021072447-990d9a910213
 	github.com/muesli/termenv v0.16.0
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/cobra v1.10.2

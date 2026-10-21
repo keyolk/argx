@@ -5,6 +5,7 @@ package config
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -57,8 +58,11 @@ func (c Context) BaseURL() string {
 }
 
 // AppURL is the web UI address for one application, which is what `o` opens.
+// The name is path-escaped: the URL is also an OSC 8 link target, and a
+// non-ASCII byte there is counted as visible text by the width functions,
+// which misaligned every column after the name.
 func (c Context) AppURL(name string) string {
-	return c.BaseURL() + "/applications/" + name
+	return c.BaseURL() + "/applications/" + url.PathEscape(name)
 }
 
 // Config is the resolved view of ~/.config/argocd/config, layered with argx's

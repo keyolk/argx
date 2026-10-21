@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/keyolk/tuikit/link"
 	"github.com/keyolk/tuikit/render"
 )
 
@@ -63,7 +64,7 @@ func (m *Model) renderContexts() string {
 		}
 
 		line := cursor + " " +
-			nameStyle.Render(render.PadRight(truncate(row.name, ctxNameCol), ctxNameCol)) + " " +
+			nameStyle.Render(render.PadRight(link.Wrap(m.contextURL(row.name), truncate(row.name, ctxNameCol)), ctxNameCol)) + " " +
 			kindStyle.Render(render.PadRight(row.authKind(), ctxKindCol)) + " " + id
 		lines = append(lines, truncate(line, m.width))
 

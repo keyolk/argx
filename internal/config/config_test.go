@@ -173,3 +173,13 @@ func contains(s, sub string) bool {
 		return false
 	})()
 }
+
+// The app URL is also an OSC 8 link target in the list. A non-ASCII byte
+// there is counted as visible text by the width functions, so the name is
+// path-escaped.
+func TestAppURLEscapesTheName(t *testing.T) {
+	c := Context{Server: "argocd.example.com"}
+	if got, want := c.AppURL("한글 앱"), "https://argocd.example.com/applications/%ED%95%9C%EA%B8%80%20%EC%95%B1"; got != want {
+		t.Fatalf("AppURL = %q, want %q", got, want)
+	}
+}

@@ -296,8 +296,13 @@ func hasPartialEscape(s string) bool {
 		return false
 	}
 	rest := s[i:]
+	if strings.HasPrefix(rest, "\x1b\\") {
+		// The string terminator that closes an OSC (an OSC 8 link): an OSC
+		// cut before it would leave "\x1b]..." as the last escape instead.
+		return false
+	}
 	if len(rest) < 2 || rest[1] != '[' {
-		return true // a bare ESC, or ESC followed by nothing
+		return true // a bare ESC, ESC followed by nothing, or an unterminated OSC
 	}
 	for _, c := range rest[2:] {
 		if c >= '@' && c <= '~' {

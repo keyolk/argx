@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/keyolk/argx/internal/argocd"
+	"github.com/keyolk/tuikit/link"
 	"github.com/keyolk/tuikit/render"
 )
 
@@ -175,7 +176,7 @@ func (m *Model) renderAppSets() string {
 		}
 
 		line := cursor + state + " " +
-			nameStyle.Render(render.PadRight(truncate(s.Name(), nameW), nameW))
+			nameStyle.Render(render.PadRight(link.Wrap(m.setURL(s), truncate(s.Name(), nameW)), nameW))
 		if ctxW > 0 {
 			label := m.gl.prefix(m.gl.server) + s.Context
 			line += " " + m.ctxStyle(s.Context).Render(render.PadRight(truncate(label, ctxW), ctxW))
@@ -350,3 +351,13 @@ func (m *Model) generatedByQuery(s *argocd.ApplicationSet) (string, bool) {
 // appsetTrackingLabel is the label Argo CD's ApplicationSet controller puts on
 // every application it generates.
 const appsetTrackingLabel = "argocd.argoproj.io/application-set-name"
+
+// setURL is the ApplicationSet's page in the Argo CD UI, or "" when its
+// server is unknown (the label then stays plain text).
+func (m *Model) setURL(s *argocd.ApplicationSet) string {
+	u, err := m.fleet.SetURL(s)
+	if err != nil {
+		return ""
+	}
+	return u
+}
