@@ -167,7 +167,7 @@ func (m *Model) renderPager() string {
 	// Two columns, when asked for and when there is room. A narrow terminal
 	// falls back rather than refusing: a cramped unified diff is still a diff,
 	// and a message telling the reader to widen their window is not.
-	if m.screen == screenDiff && m.sxs && m.sxsAvailable() {
+	if m.sxsActive() {
 		return padBody(m.renderSideBySide(sideBySide(all), m.pagerTop, h), h)
 	}
 

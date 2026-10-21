@@ -21,6 +21,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/keyolk/tuikit/prefs"
+	"github.com/keyolk/tuikit/split"
 
 	"github.com/keyolk/argx/internal/argocd"
 )
@@ -33,6 +34,8 @@ type uiState struct {
 	Tab         string          `json:"tab,omitempty"`
 	AutoRefresh bool            `json:"auto_refresh,omitempty"`
 	Schedules   []savedSchedule `json:"schedules,omitempty"`
+	// DiffSplit is the side-by-side diff's column ratio.
+	DiffSplit split.State `json:"diff_split"`
 }
 
 // savedSchedule is a scheduled sync as stored. A separate type because
@@ -80,6 +83,7 @@ func (m *Model) uiState() uiState {
 		AppFilter:   m.appFilter.raw,
 		Tab:         m.lastTab.String(),
 		AutoRefresh: m.autoRefresh,
+		DiffSplit:   m.sxsSplitModel().State(),
 	}
 	for _, s := range m.schedules {
 		st.Schedules = append(st.Schedules, savedSchedule{
@@ -98,6 +102,9 @@ func (m *Model) restoreUI(st uiState) int {
 	m.appFilter = parseAppFilter(st.AppFilter)
 	m.lastTab = parseTab(st.Tab)
 	m.autoRefresh = st.AutoRefresh
+	// Restore rejects a ratio that is not a fraction (missing, a percentage,
+	// NaN) and keeps equal columns.
+	m.sxsSplit, _ = m.sxsSplitModel().Restore(st.DiffSplit)
 	pending := 0
 	for _, ss := range st.Schedules {
 		s := scheduled{

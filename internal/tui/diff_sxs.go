@@ -96,20 +96,14 @@ func sideBySide(lines []string) []sxsRow {
 	return out
 }
 
-// renderSideBySide draws the paired rows into two columns.
-// sxsGutter is the single vertical rule between the columns. Two columns of
+// renderSideBySide draws the paired rows into two columns, sized by the
+// column split (sxsLayout): the drag selection and the mouse use the same
+// rects. The gutter between them is a single vertical rule: two columns of
 // text with nothing between them read as one wrapped column.
-const sxsGutter = " │ "
-
-// sxsColumns is the width of each side-by-side column and of the gutter
-// between them; the drag selection splits the body with the same numbers.
-func (m *Model) sxsColumns() (col, gutter int) {
-	gutter = lipgloss.Width(sxsGutter)
-	return max(1, (m.width-gutter)/2), gutter
-}
-
 func (m *Model) renderSideBySide(rows []sxsRow, top, h int) []string {
-	col, _ := m.sxsColumns()
+	lr, gr, rr := m.sxsLayout()
+	col, rcol := max(1, lr.W), max(1, rr.W)
+	gutter := m.sxsGutterRow(gr.W)
 
 	out := make([]string, 0, h)
 	for i := top; i < len(rows) && len(out) < h; i++ {
@@ -138,17 +132,17 @@ func (m *Model) renderSideBySide(rows []sxsRow, top, h int) []string {
 		// the reader can see at a glance that the line exists on only one side
 		// — an empty cell and a cell of spaces look identical otherwise.
 		left := render.PadRight(truncate(r.left, col), col)
-		right := truncate(r.right, col)
+		right := truncate(r.right, rcol)
 		if r.left == "" && (r.kind == '+' || r.kind == '~') {
 			left = m.st.dim.Render(render.PadRight(strings.Repeat("·", min(col, 3)), col))
 			lStyle = lipgloss.NewStyle()
 		}
 		if r.right == "" && (r.kind == '-' || r.kind == '~') {
-			right = m.st.dim.Render(strings.Repeat("·", min(col, 3)))
+			right = m.st.dim.Render(strings.Repeat("·", min(rcol, 3)))
 			rStyle = lipgloss.NewStyle()
 		}
 
-		out = append(out, lStyle.Render(left)+m.st.dim.Render(sxsGutter)+rStyle.Render(right))
+		out = append(out, lStyle.Render(left)+gutter+rStyle.Render(right))
 	}
 	return out
 }

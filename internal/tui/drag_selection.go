@@ -79,8 +79,8 @@ func (m *Model) selPanes() []selection.Pane {
 	case screenHelp:
 		return text(m.helpLines(), m.pagerTop)
 	case screenDiff, screenManifest, screenLogs, screenEvents:
-		if m.screen == screenDiff && m.sxs && m.sxsAvailable() {
-			return m.sxsPanes(body)
+		if m.sxsActive() {
+			return m.sxsPanes()
 		}
 		return text(m.pagerLines(), m.pagerTop)
 	case screenContexts:
@@ -111,11 +111,10 @@ func (m *Model) contextDetailPanes(body mouse.Rect) []selection.Pane {
 	return []selection.Pane{{ID: pagerPaneID, Rect: body, Kind: selection.Text, Lines: lines, Offset: m.pagerTop}}
 }
 
-// sxsPanes are the two columns of renderSideBySide, split by its gutter.
-func (m *Model) sxsPanes(body mouse.Rect) []selection.Pane {
-	col, gutter := m.sxsColumns()
-	left := mouse.Rect{X: body.X, Y: body.Y, W: col, H: body.H}
-	right := mouse.Rect{X: body.X + col + gutter, Y: body.Y, W: max(0, body.W-col-gutter), H: body.H}
+// sxsPanes are the two columns of renderSideBySide, split by its gutter: the
+// column split's rects, which renderSideBySide draws in.
+func (m *Model) sxsPanes() []selection.Pane {
+	left, _, right := m.sxsLayout()
 	return []selection.Pane{
 		{ID: "diff-left", Rect: left, Kind: selection.Text},
 		{ID: "diff-right", Rect: right, Kind: selection.Text},

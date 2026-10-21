@@ -19,8 +19,8 @@ github.com/gorilla/websocket v1.5.3 h1:saDtZ6Pbx/0u+bgYQ3q96pZgCzfhKXGPqt7kZ72aN
 github.com/gorilla/websocket v1.5.3/go.mod h1:YR8l580nyteQvAITg2hZ9XVh4b55+EU/adAjf1fMHhE=
 github.com/inconshreveable/mousetrap v1.1.0 h1:wN+x4NVGpMsO7ErUn/mUI3vEoE6Jt13X2s0bqwp9tc8=
 github.com/inconshreveable/mousetrap v1.1.0/go.mod h1:vpF70FUmC8bwa3OWnCshd2FqLfsEA9PFc4w1p2J65bw=
-github.com/keyolk/tuikit v0.0.0-20261021080153-b0beaa45b719 h1:Edpqtu56QDZVThm2iqiEP4UOq4uH1pWmG0c5xZbmvmQ=
-github.com/keyolk/tuikit v0.0.0-20261021080153-b0beaa45b719/go.mod h1:f1m38AtKzIx8QT7vR3N0ghjtCcn8bhcoeYtwveRIcxw=
+github.com/keyolk/tuikit v0.0.0-20261021151546-5b7fabea432c h1:w+pG74PIIaY0u+wCpy74iT3ljMxxh2t25xpU+sJaANM=
+github.com/keyolk/tuikit v0.0.0-20261021151546-5b7fabea432c/go.mod h1:f1m38AtKzIx8QT7vR3N0ghjtCcn8bhcoeYtwveRIcxw=
 github.com/lucasb-eyer/go-colorful v1.2.0 h1:1nnpGOrhyZZuNyfu1QjKiUICQ74+3FNCN69Aj6K7nkY=
 github.com/lucasb-eyer/go-colorful v1.2.0/go.mod h1:R4dSotOR9KMtayYi1e77YzuveK+i7ruzyGqttikkLy0=
 github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=

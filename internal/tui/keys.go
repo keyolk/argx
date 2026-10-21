@@ -126,7 +126,12 @@ const (
 	aPagerNoise = "pager.noise"
 	aPagerLeave = "pager.leave"
 
-	aDiffSxS     = "diff.sidebyside"
+	aDiffSxS = "diff.sidebyside"
+	// The kit's split actions (split.ActionGrow…), spelled out so the
+	// dispatch test can find them; TestSplitActionNamesAreTheKits keeps them equal.
+	aSplitGrow   = "split.grow"
+	aSplitShrink = "split.shrink"
+	aSplitReset  = "split.reset"
 	aDiffTool    = "diff.tool"
 	aDiffPairing = "diff.pairing"
 
@@ -389,6 +394,7 @@ func bindings() []keys.Binding {
 		keys.Binding{Action: aDiffTool, Keys: []string{"D"}, LatinOnly: true, Ctx: ctxDiff, Group: g, Help: "hand the two documents to your diff tool", Short: "diff tool", Footer: 3},
 		keys.Binding{Action: aDiffPairing, Keys: []string{"H"}, LatinOnly: true, Ctx: ctxDiff, Group: g, Help: "pair resources whose names carry a content hash", Short: "hash pairing", Footer: 7},
 	)
+	add(sxsBindings()...)
 
 	// ---- sync windows ----
 	add(navBindings(ctxWindows, 1, "move")...)
@@ -692,6 +698,8 @@ func (m *Model) actionVisible(a string) bool {
 		return m.screen != screenSchedule && m.pendingSchedules() > 0
 	case aContexts:
 		return m.screen == screenApps
+	case aSplitGrow, aSplitShrink, aSplitReset:
+		return m.sxsActive()
 	case aFilter:
 		switch m.screen {
 		case screenApps, screenAppSets, screenDiff, screenManifest, screenLogs, screenEvents:
