@@ -6,6 +6,7 @@ import (
 
 	"github.com/charmbracelet/lipgloss"
 	"github.com/keyolk/tuikit/render"
+	"github.com/keyolk/tuikit/selection"
 )
 
 // View renders the whole frame. Pure: no I/O, no state mutation.
@@ -44,7 +45,8 @@ func (m *Model) View() string {
 	if m.overlay != overlayNone {
 		frame = m.renderOverlay(frame)
 	}
-	return m.textSel.Render(frame, m.selPanes(), m.st.selection)
+	// Reverse video that survives NO_COLOR: reverse is not a color.
+	return m.textSel.Render(frame, m.selPanes(), selection.DefaultStyle())
 }
 
 // renderTooSmall is what the user sees below the minimum size — an explicit

@@ -206,9 +206,8 @@ func (m *Model) helpLines() []string {
 	}
 	stacks := append([][]keys.Ctx{m.stackFor(from)}, allStacks()...)
 	secs := m.keymap().Help(m.keyOpts(), stacks...)
-	// Every line fits on one page this tall, so RenderHelp returns them all
-	// and the pager does the scrolling.
-	lines, _ := keys.RenderHelp(secs, m.width, 1<<20, 0, m.helpStyle())
+	// Every line, unmarked: the pager does the scrolling.
+	lines := keys.HelpLines(secs, m.width, m.helpStyle())
 	lines = append(lines, "")
 
 	type row struct{ k, d string }

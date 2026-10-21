@@ -8,6 +8,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	xansi "github.com/charmbracelet/x/ansi"
 
 	"github.com/keyolk/argx/internal/argocd"
 	"github.com/keyolk/argx/internal/config"
@@ -510,7 +511,9 @@ func TestColumnsLineUpWithTheHeader(t *testing.T) {
 
 		// And every data row must agree with those positions.
 		for r := 0; r < len(m.appRows); r++ {
-			line := lines[2+r]
+			// Searched without escapes: the name's link URL holds the
+			// context's host, which would match first.
+			line := stripANSI(lines[2+r])
 			if c.ctx > 0 {
 				i := strings.Index(line, m.apps[m.appRows[r]].Context)
 				if i < 0 {
@@ -821,19 +824,7 @@ func TestRevisionCellShapes(t *testing.T) {
 	}
 }
 
-// stripANSI removes escape sequences so a cell's text can be inspected.
-func stripANSI(s string) string {
-	var b strings.Builder
-	for i := 0; i < len(s); {
-		if s[i] == 0x1b {
-			for i < len(s) && !(s[i] >= '@' && s[i] <= '~') {
-				i++
-			}
-			i++ // the final byte
-			continue
-		}
-		b.WriteByte(s[i])
-		i++
-	}
-	return b.String()
-}
+// stripANSI removes escape sequences so a cell's text can be inspected. It
+// must know OSC (an OSC 8 link around an app name), not only CSI: a CSI-only
+// scan stopped at the "]" of "\x1b]8;;" and left the URL in the text.
+func stripANSI(s string) string { return xansi.Strip(s) }

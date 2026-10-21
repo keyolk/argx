@@ -263,7 +263,7 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case tea.MouseMsg:
+	case tea.MouseMsg, selection.AutoScrollMsg:
 		return m.selectionMouse(msg)
 
 	case selection.CopiedMsg:

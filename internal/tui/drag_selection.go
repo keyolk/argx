@@ -1,9 +1,6 @@
 package tui
 
 import (
-	"fmt"
-	"unicode/utf8"
-
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/keyolk/tuikit/mouse"
 	"github.com/keyolk/tuikit/selection"
@@ -19,7 +16,8 @@ import (
 //     it was (Enter where Enter only reads, nothing elsewhere).
 //   - pagers (diff, manifest, logs, events, help, a context's detail) are Text
 //     panes with their whole content, so a drag past the top or bottom
-//     scrolls through the screen's own nav.down / nav.up, as the wheel does.
+//     scrolls them (pagerTop is set to the kit's offset), and a drag resting
+//     there keeps scrolling.
 //     The side-by-side diff is two Text panes read from the frame: a header
 //     row spans both columns, so neither column has one line per row to give.
 //   - the resource graph is a Text pane read from the frame.
@@ -28,40 +26,34 @@ import (
 //
 // Selection never reaches a write: the copy is the only side effect.
 
-// selectionMouse feeds msg to the selection before the click handler. A press
-// that does not move is left to handleMouse, so click-to-select still works;
-// only what the selection consumed (a drag, its release, a word pick) skips it.
-func (m *Model) selectionMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
-	r := m.textSel.Mouse(msg, m.selPanes(), m.View(), m.clock())
-	var cmds []tea.Cmd
+// selectionMouse feeds a mouse event or an auto-scroll tick to the selection
+// before the click handler. A press that does not move is left to
+// handleMouse, so click-to-select still works; only what the selection
+// consumed (a drag, its release, a word pick) skips it.
+func (m *Model) selectionMouse(msg tea.Msg) (tea.Model, tea.Cmd) {
+	r, cmd := m.textSel.Update(msg, m.selPanes, m.View, m.clock())
 	if r.Scroll != 0 && r.ScrollPane == pagerPaneID {
-		act, n := aNavDown, r.Scroll
-		if n < 0 {
-			act, n = aNavUp, -n
-		}
-		for range n {
-			_, c := m.runAction(act)
-			cmds = append(cmds, c)
-		}
+		// Set, not stepped through nav.down/nav.up: the kit computed the
+		// offset from the one the pane reported, and every pager's renderer
+		// clamps pagerTop again on the next frame.
+		m.pagerTop = r.Offset
 	}
-	if r.Copy != "" {
-		cmds = append(cmds, selection.Copy(r.Copy))
+	mm, isMouse := msg.(tea.MouseMsg)
+	if r.Consumed || !isMouse {
+		return m, cmd
 	}
-	if r.Consumed {
-		return m, tea.Batch(cmds...)
-	}
-	_, cmd := m.handleMouse(msg)
-	return m, tea.Batch(append(cmds, cmd)...)
+	_, click := m.handleMouse(mm)
+	return m, tea.Batch(cmd, click)
 }
 
 // copied reports the clipboard write: a copy is silent otherwise, and a
 // failed one (no pbcopy, no /dev/tty) must not look like a success.
 func (m *Model) copied(msg selection.CopiedMsg) {
 	if msg.Err != nil {
-		m.setToastErr("copy failed: " + msg.Err.Error())
+		m.setToastErr(msg.Note())
 		return
 	}
-	m.setToast(fmt.Sprintf("copied %d chars", utf8.RuneCountInString(msg.Text)))
+	m.setToast(msg.Note())
 }
 
 const pagerPaneID = "pager"
@@ -112,6 +104,7 @@ func (m *Model) contextDetailPanes(body mouse.Rect) []selection.Pane {
 	if lines == nil {
 		return []selection.Pane{{ID: pagerPaneID, Rect: body, Kind: selection.Text}}
 	}
+	// The panel draws the marker whenever it is taller than the body.
 	if len(lines) > body.H {
 		body.H--
 	}
@@ -135,12 +128,6 @@ func (m *Model) overlayPanes() []selection.Pane {
 	if box.W == 0 {
 		return nil
 	}
-	st := m.st.modal // modalErr has the same frame
-	content := mouse.Rect{
-		X: box.X + st.GetBorderLeftSize() + st.GetPaddingLeft(),
-		Y: box.Y + st.GetBorderTopSize() + st.GetPaddingTop(),
-		W: max(0, box.W-st.GetHorizontalFrameSize()),
-		H: max(0, box.H-st.GetVerticalFrameSize()),
-	}
+	content := box.InsetStyle(m.st.modal) // modalErr has the same frame
 	return []selection.Pane{{ID: "overlay", Rect: content, Kind: selection.Text}}
 }

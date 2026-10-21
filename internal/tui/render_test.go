@@ -345,7 +345,7 @@ func TestColumnsAlignAcrossCJKNames(t *testing.T) {
 	// so its start position is the cleanest alignment probe — and unlike a
 	// project name it cannot also appear inside an application name.
 	var revCols []int
-	for _, line := range strings.Split(m.View(), "\n") {
+	for _, line := range strings.Split(stripANSI(m.View()), "\n") {
 		i := strings.Index(line, "0123456")
 		if i < 0 {
 			continue

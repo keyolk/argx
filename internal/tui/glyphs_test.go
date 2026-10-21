@@ -319,7 +319,8 @@ func TestColumnsStayAlignedAcrossIconSets(t *testing.T) {
 
 			lines := strings.Split(m.View(), "\n")
 			for r := 0; r < len(m.appRows); r++ {
-				line := lines[2+r]
+				// Without escapes: the name's link URL holds the context's host.
+				line := stripANSI(lines[2+r])
 				if c.ctx > 0 {
 					ctxName := m.apps[m.appRows[r]].Context
 					i := strings.Index(line, ctxName)

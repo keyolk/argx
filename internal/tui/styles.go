@@ -4,7 +4,6 @@ import (
 	"os"
 
 	"github.com/charmbracelet/lipgloss"
-	"github.com/keyolk/tuikit/theme"
 )
 
 // Semantic color tokens. Render paths reference these, never a raw hex literal,
@@ -57,14 +56,12 @@ type styles struct {
 	// cursorCell is the text cursor in the filter prompt: reverse video over
 	// the character it sits on, so its position is unambiguous.
 	cursorCell lipgloss.Style
-	// selection draws the drag selection in reverse video.
-	selection lipgloss.Style
-	mark      lipgloss.Style
-	modal     lipgloss.Style
-	modalErr  lipgloss.Style
-	diffAdd   lipgloss.Style
-	diffDel   lipgloss.Style
-	diffHunk  lipgloss.Style
+	mark       lipgloss.Style
+	modal      lipgloss.Style
+	modalErr   lipgloss.Style
+	diffAdd    lipgloss.Style
+	diffDel    lipgloss.Style
+	diffHunk   lipgloss.Style
 
 	// ctx holds one style per fleet position; see ctxPalette.
 	ctx []lipgloss.Style
@@ -99,14 +96,10 @@ func newStyles() *styles {
 		footer:     r.NewStyle().Foreground(cDim),
 		filter:     r.NewStyle().Foreground(cInfo),
 		cursorCell: r.NewStyle().Reverse(true),
-		// Its own renderer: under NO_COLOR termenv picks the Ascii profile,
-		// which drops reverse video too, and the selection would vanish.
-		// theme.NewRenderer keeps attributes while dropping colors.
-		selection: theme.NewRenderer(os.Stderr).NewStyle().Reverse(true),
-		mark:      r.NewStyle().Bold(true).Foreground(cMark),
-		diffAdd:   r.NewStyle().Foreground(cSuccess),
-		diffDel:   r.NewStyle().Foreground(cError),
-		diffHunk:  r.NewStyle().Foreground(cInfo),
+		mark:       r.NewStyle().Bold(true).Foreground(cMark),
+		diffAdd:    r.NewStyle().Foreground(cSuccess),
+		diffDel:    r.NewStyle().Foreground(cError),
+		diffHunk:   r.NewStyle().Foreground(cInfo),
 	}
 	s.modal = r.NewStyle().
 		Border(lipgloss.RoundedBorder()).

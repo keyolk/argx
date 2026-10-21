@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/keyolk/argx/internal/argocd"
+	"github.com/keyolk/tuikit/link"
 	"github.com/keyolk/tuikit/render"
 )
 
@@ -78,7 +79,9 @@ func (m *Model) renderApps() string {
 		default:
 			nameStyle = lipgloss.NewStyle()
 		}
-		name := nameStyle.Render(render.PadRight(truncate(a.Name(), c.name), c.name))
+		// The name links to the app in the Argo CD UI (E11); the padding
+		// after it does not.
+		name := nameStyle.Render(render.PadRight(link.Wrap(m.appURL(a), truncate(a.Name(), c.name)), c.name))
 
 		rev := m.revisionCell(a)
 
