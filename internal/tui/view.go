@@ -42,9 +42,9 @@ func (m *Model) View() string {
 	)
 
 	if m.overlay != overlayNone {
-		return m.renderOverlay(frame)
+		frame = m.renderOverlay(frame)
 	}
-	return frame
+	return m.textSel.Render(frame, m.selPanes(), m.st.selection)
 }
 
 // renderTooSmall is what the user sees below the minimum size — an explicit

@@ -35,6 +35,7 @@ import (
 	"github.com/keyolk/tuikit/keys"
 	"github.com/keyolk/tuikit/mouse"
 	"github.com/keyolk/tuikit/prefs"
+	"github.com/keyolk/tuikit/selection"
 	"github.com/keyolk/tuikit/toast"
 
 	"github.com/keyolk/argx/internal/argocd"
@@ -313,7 +314,9 @@ type Model struct {
 	// can be told from two clicks on different rows. now is the clock for it,
 	// replaced by tests.
 	clicks mouse.Clicks
-	now    func() time.Time
+	// textSel is the drag selection (drag_selection.go).
+	textSel selection.Selection
+	now     func() time.Time
 
 	// ---- transient feedback ----
 	toasts toast.Queue

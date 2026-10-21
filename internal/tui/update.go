@@ -8,6 +8,7 @@ import (
 	"github.com/keyolk/tuikit/keys"
 	"github.com/keyolk/tuikit/mouse"
 	"github.com/keyolk/tuikit/prefs"
+	"github.com/keyolk/tuikit/selection"
 	"github.com/keyolk/tuikit/toast"
 )
 
@@ -263,12 +264,19 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 
 	case tea.MouseMsg:
-		return m.handleMouse(msg)
+		return m.selectionMouse(msg)
+
+	case selection.CopiedMsg:
+		m.copied(msg)
+		return m, nil
 
 	case tea.KeyMsg:
 		// A key between two clicks breaks the pair: click, move away and back
 		// by keyboard, click again must not count as a double click.
 		m.clicks = mouse.Clicks{}
+		// A key is the "next action" that ends a selection, as in the mod
+		// engine; cleared here, not in handleKey, for the same reason.
+		m.textSel.Clear()
 		// ctrl+c is the terminal's interrupt and quits from anywhere: inside a
 		// modal, mid-search, during a confirmation. Routing it through the
 		// normal key path would let an overlay or the filter prompt swallow it,
