@@ -40,6 +40,7 @@ import (
 
 	"github.com/keyolk/argx/internal/argocd"
 	"github.com/keyolk/argx/internal/config"
+	"github.com/keyolk/tuikit/split"
 )
 
 type screen int
@@ -239,6 +240,8 @@ type Model struct {
 	// by default: a unified diff is what people expect from the word "diff",
 	// and two columns need a wide terminal to be worth it.
 	sxs bool
+	// sxsSplit is the boundary between the two columns (sxs_split.go).
+	sxsSplit split.Model
 
 	// ---- multi-select ----
 	//

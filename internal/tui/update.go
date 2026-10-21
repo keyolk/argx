@@ -263,7 +263,14 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case tea.MouseMsg, selection.AutoScrollMsg:
+	case tea.MouseMsg:
+		// The column split first: a gutter press is a resize, never a
+		// selection or a click.
+		if m.splitMouse(msg) {
+			return m, nil
+		}
+		return m.selectionMouse(msg)
+	case selection.AutoScrollMsg:
 		return m.selectionMouse(msg)
 
 	case selection.CopiedMsg:

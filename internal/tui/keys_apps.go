@@ -196,6 +196,8 @@ func (m *Model) handlePagerKey(action string) (tea.Model, tea.Cmd) {
 	// Stepping between matches rather than through the context around them is
 	// what makes a search over a long manifest usable.
 	switch action {
+	case aSplitGrow, aSplitShrink, aSplitReset:
+		return m.handleSplitKey(action)
 	case aPagerNext:
 		return m, m.jumpToHit(1)
 	case aPagerPrev:

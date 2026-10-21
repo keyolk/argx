@@ -269,6 +269,7 @@ prompt is open.
 | `e` | events | — | — | events |
 | `D` | — | diff the whole application | — | — |
 | `s` `D` | in a diff: side by side / your own diff tool ||||
+| `<` `>` `=` | in a side-by-side diff: narrow / widen the left column, equal columns ||||
 | `H` | in a diff: pair hash-suffixed resources (on by default) ||||
 | `l` `L` | — | pod logs | — | — |
 | `e` | — | a shell in the container | — | — |
@@ -698,6 +699,11 @@ empty cell and a cell of spaces look identical.
 It needs 100 columns; below that the view stays unified rather than refusing,
 and the status line says so. Headers and hunk markers span the full width: they
 describe the comparison, not either side of it.
+
+The columns start equal. `>` widens the left (live) column, `<` narrows it, `=`
+makes them equal again; dragging the `│` does the same, and a double click on it
+resets. Each column keeps at least 30 cells. The ratio is kept in `ui.json`
+(`diff_split`).
 
 The layout runs on whatever the search and the noise filter produced, not on a
 second pass over the manifests — one pipeline, so what you see in two columns
