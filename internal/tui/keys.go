@@ -148,6 +148,7 @@ const (
 	aCtxOpen    = "contexts.open"
 	aCtxBrowser = "contexts.browser"
 	aCtxReload  = "contexts.reload"
+	aCtxLogin   = "contexts.login"
 	aCtxLeave   = "contexts.leave"
 	aCtxClose   = "contexts.close"
 
@@ -267,7 +268,7 @@ func tabBindings(ctx keys.Ctx, footer int) []keys.Binding {
 // to press it and have Argo CD record a failed operation.
 var syncLabels = map[string]string{"blocked": "sync (w waits)"}
 
-// Uppercase-only actions (A, C, F, S, D, N, M, H) are LatinOnly: a Korean
+// Uppercase-only actions (A, C, F, S, D, N, M, H, L) are LatinOnly: a Korean
 // input source cannot type them, and each stays reachable from the : palette,
 // which is typed into. TestLatinOnlyActionsAreInThePalette holds that line.
 func bindings() []keys.Binding {
@@ -423,11 +424,13 @@ func bindings() []keys.Binding {
 		keys.Binding{Action: aCtxOpen, Keys: []string{"enter", "l", "right"}, Ctx: ctxContexts, Group: g, Help: "the full credential: source, claims, permissions", Short: "details", Footer: 2},
 		keys.Binding{Action: aCtxBrowser, Keys: []string{"o"}, Ctx: ctxContexts, Group: g, Help: "open the server in browser", Short: "browser", Footer: 3},
 		keys.Binding{Action: aCtxReload, Keys: []string{"r", "ctrl+r"}, Ctx: ctxContexts, Group: g, Help: "re-ask every server", Short: "reload", Footer: 4},
+		keys.Binding{Action: aCtxLogin, Keys: []string{"L"}, LatinOnly: true, Ctx: ctxContexts, Group: g, Help: "log in again through SSO — only a context on the argocd CLI session", Short: "login", Footer: 5},
 		keys.Binding{Action: aCtxLeave, Keys: []string{"h", "left"}, Ctx: ctxContexts, Group: g, Help: "back"},
 	)
 	add(navBindings(ctxCtxDetail, 1, "scroll")...)
 	add(
 		keys.Binding{Action: aCtxBrowser, Keys: []string{"o"}, Ctx: ctxCtxDetail, Group: g, Help: "open the server in browser", Short: "browser", Footer: 2},
+		keys.Binding{Action: aCtxLogin, Keys: []string{"L"}, LatinOnly: true, Ctx: ctxCtxDetail, Group: g, Help: "log in again through SSO", Short: "login", Footer: 3},
 		keys.Binding{Action: aCtxClose, Keys: []string{"enter", "h", "left"}, Ctx: ctxCtxDetail, Group: g, Help: "back to the list"},
 	)
 

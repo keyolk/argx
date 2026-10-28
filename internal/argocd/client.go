@@ -16,6 +16,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/keyolk/argx/internal/config"
@@ -25,6 +26,10 @@ import (
 type Client struct {
 	ctx  config.Context
 	http *http.Client
+
+	// tokMu guards ctx.Token, the one field that changes after construction:
+	// a re-login swaps it while requests on other goroutines are reading it.
+	tokMu sync.RWMutex
 }
 
 // New builds a client for the given context.
@@ -44,7 +49,26 @@ func New(ctx config.Context) *Client {
 
 // Context exposes the connection settings, mainly so callers can build web UI
 // URLs without holding a second copy of the config.
-func (c *Client) Context() config.Context { return c.ctx }
+func (c *Client) Context() config.Context {
+	c.tokMu.RLock()
+	defer c.tokMu.RUnlock()
+	return c.ctx
+}
+
+// token is the bearer credential for the next request.
+func (c *Client) token() string {
+	c.tokMu.RLock()
+	defer c.tokMu.RUnlock()
+	return c.ctx.Token
+}
+
+// SetToken replaces the credential, so a renewed session takes effect without
+// restarting argx. Requests already in flight finish with the old one.
+func (c *Client) SetToken(tok string) {
+	c.tokMu.Lock()
+	defer c.tokMu.Unlock()
+	c.ctx.Token = tok
+}
 
 // APIError carries the HTTP status so callers can distinguish auth failure from
 // a missing application.
@@ -93,7 +117,7 @@ func (c *Client) do(ctx context.Context, method, path string, q url.Values, body
 	if err != nil {
 		return fmt.Errorf("build request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+c.ctx.Token)
+	req.Header.Set("Authorization", "Bearer "+c.token())
 	req.Header.Set("Accept", "application/json")
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
@@ -284,7 +308,7 @@ func (c *Client) PodLogs(ctx context.Context, app string, r ResourceRef, contain
 	if err != nil {
 		return "", fmt.Errorf("build request: %w", err)
 	}
-	req.Header.Set("Authorization", "Bearer "+c.ctx.Token)
+	req.Header.Set("Authorization", "Bearer "+c.token())
 
 	resp, err := c.http.Do(req)
 	if err != nil {

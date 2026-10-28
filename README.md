@@ -448,6 +448,21 @@ never exercises is noise.
 The credential itself is never rendered, in either view. This describes a token;
 it does not show one.
 
+`L` renews the session under the cursor with `argocd login <server> --sso`. The
+terminal goes to the CLI while the browser round trip runs, and the new token is
+read back into the running client, so argx keeps going without a restart. The
+server's `--grpc-web`, root path, `--insecure` and `--plaintext` settings are
+passed again, because the CLI rewrites its server entry from the flags it gets.
+
+- **One server at a time.** The CLI listens on one fixed callback port and
+  rewrites its whole config file when the browser returns. Two logins at once
+  either fail to bind the port or erase each other's token.
+- **Only a context on the CLI session.** A context with a configured source
+  (`pass:`, a command) keeps using that source, so a login would change nothing
+  argx uses. `L` says so instead of running.
+- An SSO session through Dex's SAML connector has no refresh token. It ends at
+  its expiry, and `L` is the way to renew it.
+
 ## Sync windows
 
 `w` from anywhere inside an application lists the schedules that allow or block

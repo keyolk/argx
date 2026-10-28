@@ -42,6 +42,10 @@ type Context struct {
 	GRPCWebRootPath string
 	// PlainText means the server speaks http, not https.
 	PlainText bool
+	// GRPCWeb is the CLI's own transport setting. argx speaks REST and never
+	// uses it, but `argocd login` rewrites the server entry from its flags, so
+	// a re-login that left it out would silently turn it off.
+	GRPCWeb bool
 }
 
 // BaseURL is the origin for both API calls and web UI links.
@@ -97,6 +101,7 @@ type raw struct {
 		Insecure        bool   `yaml:"insecure"`
 		GRPCWebRootPath string `yaml:"grpc-web-root-path"`
 		PlainText       bool   `yaml:"plain-text"`
+		GRPCWeb         bool   `yaml:"grpc-web"`
 	} `yaml:"servers"`
 	Users []struct {
 		Name      string `yaml:"name"`
@@ -151,10 +156,11 @@ func Load() (*Config, error) {
 		insecure  bool
 		rootPath  string
 		plainText bool
+		grpcWeb   bool
 	}
 	servers := make(map[string]srv, len(r.Servers))
 	for _, s := range r.Servers {
-		servers[s.Server] = srv{s.Insecure, s.GRPCWebRootPath, s.PlainText}
+		servers[s.Server] = srv{s.Insecure, s.GRPCWebRootPath, s.PlainText, s.GRPCWeb}
 	}
 
 	cfg := &Config{Current: r.CurrentContext, Browser: os.Getenv("ARGX_BROWSER")}
@@ -167,6 +173,7 @@ func Load() (*Config, error) {
 			Insecure:        s.insecure,
 			GRPCWebRootPath: s.rootPath,
 			PlainText:       s.plainText,
+			GRPCWeb:         s.grpcWeb,
 		})
 	}
 
@@ -262,6 +269,34 @@ func (c Context) HasToken() bool {
 		return c.Token != ""
 	}
 	return c.Token != "" || !c.spec.empty()
+}
+
+// UsesArgocdSession reports whether argx takes this context's token from the
+// session `argocd login` maintains, so that logging in again changes it.
+func (c Context) UsesArgocdSession() bool {
+	return c.spec.empty() || c.spec.usesArgocdSession()
+}
+
+// LoginArgs is the `argocd login` command line that renews this context's
+// session through SSO.
+//
+// It repeats the server settings the CLI already holds, because the CLI
+// rebuilds the server entry from the flags it was given.
+func (c Context) LoginArgs() []string {
+	args := []string{"login", c.Server, "--sso", "--name", c.Name}
+	if c.GRPCWeb {
+		args = append(args, "--grpc-web")
+	}
+	if c.GRPCWebRootPath != "" {
+		args = append(args, "--grpc-web-root-path", c.GRPCWebRootPath)
+	}
+	if c.Insecure {
+		args = append(args, "--insecure")
+	}
+	if c.PlainText {
+		args = append(args, "--plaintext")
+	}
+	return args
 }
 
 // TokenSource describes where the credential comes from, for display.

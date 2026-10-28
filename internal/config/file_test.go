@@ -902,3 +902,53 @@ func TestDiffToolEnvironmentOverridesTheConfig(t *testing.T) {
 		t.Errorf("diff tool = %v, want the environment's", got)
 	}
 }
+
+// `argocd login` rebuilds the server entry from its flags, so a re-login has to
+// repeat what the entry already says — leaving out --grpc-web would turn
+// gRPC-web off for the CLI behind a proxy that needs it.
+func TestLoginArgsKeepTheServerSettings(t *testing.T) {
+	writeBoth(t, `contexts:
+- name: prod
+  server: prod.example.com
+  user: prod
+servers:
+- server: prod.example.com
+  grpc-web: true
+  grpc-web-root-path: argo
+users:
+- name: prod
+  auth-token: old
+current-context: prod
+`, "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, _ := cfg.Lookup("prod")
+	got := strings.Join(ctx.LoginArgs(), " ")
+	want := "login prod.example.com --sso --name prod --grpc-web --grpc-web-root-path argo"
+	if got != want {
+		t.Errorf("LoginArgs() = %q, want %q", got, want)
+	}
+}
+
+// Only a context on the CLI session is renewed by `argocd login`; one with a
+// configured source would keep using that source afterwards.
+func TestUsesArgocdSessionOnlyWithoutAConfiguredSource(t *testing.T) {
+	writeBoth(t, twoContexts, `contexts:
+  prod:
+    token: pass:some/argocd/token
+  dev:
+    token: argocd
+`)
+	cfg, _ := Load()
+	prod, _ := cfg.Lookup("prod")
+	dev, _ := cfg.Lookup("dev")
+	if prod.UsesArgocdSession() {
+		t.Error("prod names a pass source; `argocd login` does not change its token")
+	}
+	if !dev.UsesArgocdSession() {
+		t.Error("dev names the argocd source; `argocd login` is what renews it")
+	}
+}

@@ -108,7 +108,7 @@ func (c *Client) Exec(ctx context.Context, req ExecRequest) (*ExecSession, error
 	// The session token goes in a cookie, not an Authorization header: that is
 	// what the terminal handler's auth middleware reads.
 	hdr := http.Header{}
-	hdr.Set("Cookie", "argocd.token="+c.ctx.Token)
+	hdr.Set("Cookie", "argocd.token="+c.token())
 
 	conn, resp, err := dialer.DialContext(ctx, wsURL, hdr)
 	if err != nil {
