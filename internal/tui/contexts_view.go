@@ -306,6 +306,10 @@ func (m *Model) handleContextsKey(action string) (tea.Model, tea.Cmd) {
 			if r := m.currentContext(); r != nil {
 				return m, m.openBrowserCmd([]string{m.contextURL(r.name)})
 			}
+		case aCtxLogin:
+			if r := m.currentContext(); r != nil {
+				return m, m.loginCmd(*r)
+			}
 		case aCtxClose:
 			m.ctxDetail = false
 			m.pagerTop = 0
@@ -338,6 +342,10 @@ func (m *Model) handleContextsKey(action string) (tea.Model, tea.Cmd) {
 	case aCtxBrowser:
 		if r := m.currentContext(); r != nil {
 			return m, m.openBrowserCmd([]string{m.contextURL(r.name)})
+		}
+	case aCtxLogin:
+		if r := m.currentContext(); r != nil {
+			return m, m.loginCmd(*r)
 		}
 	case aCtxReload:
 		return m, m.loadContextsCmd()

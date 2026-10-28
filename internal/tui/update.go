@@ -205,6 +205,18 @@ func (m *Model) update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
+	case loginMsg:
+		if msg.err == nil {
+			msg.err = m.reloadToken(msg.name)
+		}
+		if msg.err != nil {
+			m.showError(fmt.Errorf("argocd login %s: %w", msg.name, msg.err))
+			return m, nil
+		}
+		m.setToast("logged in to " + msg.name)
+		// The rows describe the old token until the servers are asked again.
+		return m, m.loadContextsCmd()
+
 	case toastMsg:
 		m.setToast(msg.text)
 		return m, nil
